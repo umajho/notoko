@@ -1,0 +1,157 @@
+From d28bb5a3dbf2e0232343df3b24a3a955b978dc95 Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Mon, 17 Nov 2025 23:01:48 +0800
+Subject: [PATCH 5/5] let copilot implement `--copy-prosody-data-only` for
+ synthesize.py
+
+---
+ synthesize.py  | 26 ++++++++++++++++++++---
+ utils/tools.py | 56 +++++++++++++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 78 insertions(+), 4 deletions(-)
+
+diff --git a/synthesize.py b/synthesize.py
+index f84f850..a89ec25 100644
+--- a/synthesize.py
++++ b/synthesize.py
+@@ -12,7 +12,7 @@ from dataset import TextDataset
+ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ 
+ 
+-def synthesize(model, step, configs, vocoder, batchs, control_values):
++def synthesize(model, step, configs, vocoder, batchs, control_values, copy_prosody_only=False):
+     preprocess_config, model_config, train_config = configs
+     pitch_control, energy_control, duration_control = control_values
+ 
+@@ -26,14 +26,25 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
+                 e_control=energy_control,
+                 d_control=duration_control
+             )
+-            synth_samples(
++            result = synth_samples(
+                 batch,
+                 output,
+                 vocoder,
+                 model_config,
+                 preprocess_config,
+                 train_config["path"]["result_path"],
++                copy_prosody_only=copy_prosody_only,
+             )
++            
++            # If copy_prosody_only is True, copy to clipboard and return
++            if copy_prosody_only and result is not None:
++                import subprocess
++                import json
++                json_str = json.dumps(result, indent=2, ensure_ascii=False)
++                process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
++                process.communicate(json_str.encode('utf-8'))
++                print("Prosody data copied to clipboard")
++                return
+ 
+ 
+ if __name__ == "__main__":
+@@ -96,6 +107,11 @@ if __name__ == "__main__":
+         default=1.0,
+         help="control the speed of the whole utterance, larger value for slower speaking rate",
+     )
++    parser.add_argument(
++        "--copy-prosody-data-only",
++        action="store_true",
++        help="copy prosody data to clipboard instead of outputting files (single mode only)",
++    )
+     args = parser.parse_args()
+ 
+     # Check source texts
+@@ -103,6 +119,10 @@ if __name__ == "__main__":
+         assert args.source is not None and args.text is None
+     if args.mode == "single":
+         assert args.source is None and args.text is not None
++    
++    # Validate copy_prosody_data_only flag
++    if args.copy_prosody_data_only:
++        assert args.mode == "single", "--copy-prosody-data-only can only be used in single mode"
+ 
+     # Read Config
+     preprocess_config = yaml.load(
+@@ -144,4 +164,4 @@ if __name__ == "__main__":
+ 
+     control_values = args.pitch_control, args.energy_control, args.duration_control
+ 
+-    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)
++    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values, copy_prosody_only=args.copy_prosody_data_only)
+diff --git a/utils/tools.py b/utils/tools.py
+index 9365027..2f9c1b8 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -499,7 +499,7 @@ def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_lengt
+     return prosody_data
+ 
+ 
+-def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
++def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path, copy_prosody_only=False):
+     from text.symbols import symbols
+ 
+     basenames = targets[0]
+@@ -518,6 +518,60 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+     else:
+         raise ValueError(f"Unsupported language code: {lang_code}. Only 'zh' (mandarin) and 'en' (english) are supported.")
+     
++    # If copy_prosody_only is True, we need to generate the audio and extract prosody without saving files
++    if copy_prosody_only:
++        from .model import vocoder_infer
++        
++        mel_predictions = predictions[1].transpose(1, 2)
++        lengths = predictions[9] * preprocess_config["preprocessing"]["stft"]["hop_length"]
++        wav_predictions = vocoder_infer(
++            mel_predictions, vocoder, model_config, preprocess_config, lengths=lengths
++        )
++        
++        sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
++        hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++        ticks_per_point = 1
++        
++        # Process only the first sample (single mode)
++        if len(wav_predictions) > 0 and segments_data_list is not None and len(segments_data_list) > 0:
++            idx = 0
++            wav = wav_predictions[idx]
++            basename = basenames[idx]
++            raw_text = raw_texts[idx]
++            segments_data = segments_data_list[idx]
++            
++            # Get the corresponding prediction data
++            src_len = predictions[8][idx].item()
++            mel_len = predictions[9][idx].item()
++            duration = predictions[5][idx, :src_len].detach().cpu().numpy()
++            
++            # Use the ACTUAL audio length
++            actual_audio_length = len(wav)
++            
++            # Extract actual pitch from generated audio
++            actual_pitch = extract_pitch_from_audio(wav, sampling_rate, ticks_per_point)
++            
++            # Ensure pitch array matches actual audio length exactly
++            if len(actual_pitch) < actual_audio_length:
++                actual_pitch = np.pad(actual_pitch, (0, actual_audio_length - len(actual_pitch)), mode='edge')
++            elif len(actual_pitch) > actual_audio_length:
++                actual_pitch = actual_pitch[:actual_audio_length]
++            
++            # Get phonemes
++            phoneme_indices = text_indices[idx, :src_len].detach().cpu().numpy()
++            phonemes = [symbols[idx] for idx in phoneme_indices]
++            
++            # Generate and return prosody data
++            prosody_data = generate_prosody_json(
++                raw_text, phonemes, duration, actual_pitch, hop_length, sampling_rate,
++                segments_data, ticks_per_point, language, actual_audio_length
++            )
++            
++            return prosody_data
++        
++        return None
++    
++    # Original behavior: save all files
+     for i in range(len(predictions[0])):
+         basename = basenames[i]
+         src_len = predictions[8][i].item()
+-- 
+2.50.1
+

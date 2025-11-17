@@ -1,0 +1,160 @@
+From 9434a551f7a525481baad53bb19e0ab82773656c Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Sat, 15 Nov 2025 03:59:32 +0800
+Subject: [PATCH 2/5] let copilot improve the spectrogram outputted before the
+ synthesization
+
+---
+ utils/tools.py | 83 ++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 81 insertions(+), 2 deletions(-)
+
+diff --git a/utils/tools.py b/utils/tools.py
+index bd82f41..71d5a5a 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -107,6 +107,7 @@ def expand(values, durations):
+ 
+ 
+ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config):
++    from text.symbols import symbols
+ 
+     basename = targets[0][0]
+     src_len = predictions[8][0].item()
+@@ -114,6 +115,12 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+     mel_target = targets[6][0, :mel_len].detach().transpose(0, 1)
+     mel_prediction = predictions[1][0, :mel_len].detach().transpose(0, 1)
+     duration = targets[11][0, :src_len].detach().cpu().numpy()
++    
++    # Convert phoneme indices to symbols
++    text_indices = targets[3]
++    phoneme_indices = text_indices[0, :src_len].detach().cpu().numpy()
++    phonemes = [symbols[idx] for idx in phoneme_indices]
++    
+     if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
+         pitch = targets[9][0, :src_len].detach().cpu().numpy()
+         pitch = expand(pitch, duration)
+@@ -138,6 +145,8 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+         ],
+         stats,
+         ["Synthetized Spectrogram", "Ground-Truth Spectrogram"],
++        phonemes=[phonemes, phonemes],
++        durations=[duration, duration],
+     )
+ 
+     if vocoder is not None:
+@@ -162,14 +171,22 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+ 
+ 
+ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
++    from text.symbols import symbols
+ 
+     basenames = targets[0]
++    text_indices = targets[3]  # phoneme indices
++    
+     for i in range(len(predictions[0])):
+         basename = basenames[i]
+         src_len = predictions[8][i].item()
+         mel_len = predictions[9][i].item()
+         mel_prediction = predictions[1][i, :mel_len].detach().transpose(0, 1)
+         duration = predictions[5][i, :src_len].detach().cpu().numpy()
++        
++        # Convert phoneme indices to symbols
++        phoneme_indices = text_indices[i, :src_len].detach().cpu().numpy()
++        phonemes = [symbols[idx] for idx in phoneme_indices]
++        
+         if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
+             pitch = predictions[2][i, :src_len].detach().cpu().numpy()
+             pitch = expand(pitch, duration)
+@@ -193,6 +210,8 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+             ],
+             stats,
+             ["Synthetized Spectrogram"],
++            phonemes=[phonemes],
++            durations=[duration],
+         )
+         os.makedirs(path, exist_ok=True)
+         plt.savefig(os.path.join(path, "{}.png".format(basename)))
+@@ -211,8 +230,15 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+         wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
+ 
+ 
+-def plot_mel(data, stats, titles):
+-    fig, axes = plt.subplots(len(data), 1, squeeze=False)
++def plot_mel(data, stats, titles, phonemes=None, durations=None):
++    # Calculate dynamic figure width based on mel spectrogram length
++    max_mel_length = max(d[0].shape[1] for d in data)
++    # Scale width: base width of 6, plus additional width proportional to length
++    # Adjust the multiplier (0.05) to control how much the width scales
++    fig_width = max(6, min(30, 6 + max_mel_length * 0.05))
++    fig_height = 4 * len(data)
++    
++    fig, axes = plt.subplots(len(data), 1, squeeze=False, figsize=(fig_width, fig_height))
+     if titles is None:
+         titles = [None for i in range(len(data))]
+     pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max = stats
+@@ -230,9 +256,62 @@ def plot_mel(data, stats, titles):
+         axes[i][0].imshow(mel, origin="lower")
+         axes[i][0].set_aspect(2.5, adjustable="box")
+         axes[i][0].set_ylim(0, mel.shape[0])
++        axes[i][0].set_xlim(0, mel.shape[1])
+         axes[i][0].set_title(titles[i], fontsize="medium")
+         axes[i][0].tick_params(labelsize="x-small", left=False, labelleft=False)
+         axes[i][0].set_anchor("W")
++        
++        # Move x-axis to bottom and add padding for phonemes
++        axes[i][0].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True, pad=10)
++        
++        # Add phonemes at the bottom if provided
++        if phonemes is not None and durations is not None:
++            phon_list = phonemes[i]
++            dur_list = durations[i]
++            
++            # Calculate positions for phonemes based on durations
++            pos = 0
++            prev_end = 0
++            for phon, dur in zip(phon_list, dur_list):
++                dur_int = int(dur)
++                if dur_int > 0:
++                    # Highlight gaps between phonemes with darker shading
++                    if pos > prev_end:
++                        # Use fill_between with y coordinates in data space
++                        axes[i][0].fill_between([prev_end, pos], 0, mel.shape[0],
++                                               facecolor='gray', alpha=0.3, zorder=2)
++                    
++                    # Draw vertical line using plot instead of axvline
++                    axes[i][0].plot([pos, pos], [0, mel.shape[0]], 
++                                   color='white', linewidth=0.8, alpha=0.7, 
++                                   linestyle='-', zorder=3)
++                    
++                    # Place phoneme text at the center of its duration
++                    x_pos = pos + dur_int / 2.0
++                    # Clean up phoneme display (remove @ prefix for readability)
++                    phon_display = phon.replace('@', '')
++                    axes[i][0].text(
++                        x_pos, 
++                        -1.5,  # Position below the mel spectrogram
++                        phon_display,
++                        ha='center',
++                        va='top',
++                        fontsize=7,
++                        rotation=0,
++                        zorder=4,
++                        clip_on=False
++                    )
++                    prev_end = pos + dur_int
++                    pos += dur_int
++                else:
++                    # Zero duration - still mark the gap
++                    pos = prev_end
++            
++            # Draw final vertical line at the end
++            if prev_end > 0:
++                axes[i][0].plot([prev_end, prev_end], [0, mel.shape[0]], 
++                               color='white', linewidth=0.8, alpha=0.7, 
++                               linestyle='-', zorder=3)
+ 
+         ax1 = add_axis(fig, axes[i][0])
+         ax1.plot(pitch, color="tomato")
+-- 
+2.50.1
+

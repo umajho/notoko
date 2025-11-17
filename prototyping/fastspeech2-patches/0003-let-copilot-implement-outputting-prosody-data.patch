@@ -1,0 +1,634 @@
+From 9a5f4e90d047cacab716cb10d7cef897f4c40d5f Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Sat, 15 Nov 2025 09:08:56 +0800
+Subject: [PATCH 3/5] let copilot implement outputting prosody data
+
+---
+ synthesize.py  |  85 ++--------
+ utils/tools.py | 411 +++++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 409 insertions(+), 87 deletions(-)
+
+diff --git a/synthesize.py b/synthesize.py
+index 59a682a..f84f850 100644
+--- a/synthesize.py
++++ b/synthesize.py
+@@ -1,89 +1,17 @@
+-import re
+ import argparse
+-from string import punctuation
+ 
+ import torch
+ import yaml
+ import numpy as np
+ from torch.utils.data import DataLoader
+-from g2p_en import G2p
+-from pypinyin import pinyin, Style
+ 
+ from utils.model import get_model, get_vocoder
+-from utils.tools import to_device, synth_samples
++from utils.tools import to_device, synth_samples, preprocess_english, preprocess_mandarin
+ from dataset import TextDataset
+-from text import text_to_sequence
+ 
+ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ 
+ 
+-def read_lexicon(lex_path):
+-    lexicon = {}
+-    with open(lex_path) as f:
+-        for line in f:
+-            temp = re.split(r"\s+", line.strip("\n"))
+-            word = temp[0]
+-            phones = temp[1:]
+-            if word.lower() not in lexicon:
+-                lexicon[word.lower()] = phones
+-    return lexicon
+-
+-
+-def preprocess_english(text, preprocess_config):
+-    text = text.rstrip(punctuation)
+-    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
+-
+-    g2p = G2p()
+-    phones = []
+-    words = re.split(r"([,;.\-\?\!\s+])", text)
+-    for w in words:
+-        if w.lower() in lexicon:
+-            phones += lexicon[w.lower()]
+-        else:
+-            phones += list(filter(lambda p: p != " ", g2p(w)))
+-    phones = "{" + "}{".join(phones) + "}"
+-    phones = re.sub(r"\{[^\w\s]?\}", "{sp}", phones)
+-    phones = phones.replace("}{", " ")
+-
+-    print("Raw Text Sequence: {}".format(text))
+-    print("Phoneme Sequence: {}".format(phones))
+-    sequence = np.array(
+-        text_to_sequence(
+-            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
+-        )
+-    )
+-
+-    return np.array(sequence)
+-
+-
+-def preprocess_mandarin(text, preprocess_config):
+-    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
+-
+-    phones = []
+-    pinyins = [
+-        p[0]
+-        for p in pinyin(
+-            text, style=Style.TONE3, strict=False, neutral_tone_with_five=True
+-        )
+-    ]
+-    for p in pinyins:
+-        if p in lexicon:
+-            phones += lexicon[p]
+-        else:
+-            phones.append("sp")
+-
+-    phones = "{" + " ".join(phones) + "}"
+-    print("Raw Text Sequence: {}".format(text))
+-    print("Phoneme Sequence: {}".format(phones))
+-    sequence = np.array(
+-        text_to_sequence(
+-            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
+-        )
+-    )
+-
+-    return np.array(sequence)
+-
+-
+ def synthesize(model, step, configs, vocoder, batchs, control_values):
+     preprocess_config, model_config, train_config = configs
+     pitch_control, energy_control, duration_control = control_values
+@@ -202,12 +130,17 @@ if __name__ == "__main__":
+     if args.mode == "single":
+         ids = raw_texts = [args.text[:100]]
+         speakers = np.array([args.speaker_id])
++        segments_data_list = []
+         if preprocess_config["preprocessing"]["text"]["language"] == "en":
+-            texts = np.array([preprocess_english(args.text, preprocess_config)])
++            texts_result, segments_data = preprocess_english(args.text, preprocess_config, return_segments=True)
++            texts = np.array([texts_result])
++            segments_data_list = [segments_data]
+         elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
+-            texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
++            texts_result, segments_data = preprocess_mandarin(args.text, preprocess_config, return_segments=True)
++            texts = np.array([texts_result])
++            segments_data_list = [segments_data]
+         text_lens = np.array([len(texts[0])])
+-        batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens))]
++        batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens), segments_data_list)]
+ 
+     control_values = args.pitch_control, args.energy_control, args.duration_control
+ 
+diff --git a/utils/tools.py b/utils/tools.py
+index 71d5a5a..3e314af 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -1,5 +1,7 @@
+ import os
+ import json
++import re
++from string import punctuation
+ 
+ import torch
+ import torch.nn.functional as F
+@@ -7,6 +9,12 @@ import numpy as np
+ import matplotlib
+ from scipy.io import wavfile
+ from matplotlib import pyplot as plt
++from g2p_en import G2p
++from pypinyin import pinyin, Style
++import pyworld as pw
++from scipy.interpolate import interp1d
++
++from text import text_to_sequence
+ 
+ 
+ matplotlib.use("Agg")
+@@ -15,6 +23,155 @@ matplotlib.use("Agg")
+ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+ 
+ 
++def read_lexicon(lex_path):
++    """Read lexicon file and return word-to-phones mapping."""
++    lexicon = {}
++    with open(lex_path) as f:
++        for line in f:
++            temp = re.split(r"\s+", line.strip("\n"))
++            word = temp[0]
++            phones = temp[1:]
++            if word.lower() not in lexicon:
++                lexicon[word.lower()] = phones
++    return lexicon
++
++
++def preprocess_english(text, preprocess_config, return_segments=False):
++    """Convert English text to phoneme sequence.
++    
++    Args:
++        text: Input English text
++        preprocess_config: Preprocessing configuration
++        return_segments: If True, return segmentation data for prosody JSON
++        
++    Returns:
++        If return_segments is False: numpy array of phoneme sequence
++        If return_segments is True: (numpy array, segments_data)
++            segments_data is a list of dicts with 'text' and 'phonemes' for each word/space
++    """
++    text = text.rstrip(punctuation)
++    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
++
++    g2p = G2p()
++    phones = []
++    segments_data = [] if return_segments else None
++    
++    words = re.split(r"([,;.\-\?\!\s+])", text)
++    for w in words:
++        word_phones = []
++        if w.lower() in lexicon:
++            word_phones = lexicon[w.lower()]
++        else:
++            word_phones = list(filter(lambda p: p != " ", g2p(w)))
++        
++        phones += word_phones
++        
++        # Track segmentation if requested
++        if return_segments:
++            if w.isspace() or not w.strip():
++                # Space segment
++                segments_data.append({
++                    "type": "space",
++                    "text": w,
++                    "phonemes": ["sp"]  # Will be replaced with actual sp phonemes
++                })
++            elif w:
++                segments_data.append({
++                    "type": "word",
++                    "text": w,
++                    "phonemes": word_phones
++                })
++    
++    phones = "{" + "}{".join(phones) + "}"
++    phones = re.sub(r"\{[^\w\s]?\}", "{sp}", phones)
++    phones = phones.replace("}{", " ")
++
++    print("Raw Text Sequence: {}".format(text))
++    print("Phoneme Sequence: {}".format(phones))
++    sequence = np.array(
++        text_to_sequence(
++            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
++        )
++    )
++
++    if return_segments:
++        return np.array(sequence), segments_data
++    return np.array(sequence)
++
++
++def preprocess_mandarin(text, preprocess_config, return_segments=False):
++    """Convert Mandarin Chinese text to phoneme sequence.
++    
++    Args:
++        text: Input Mandarin Chinese text
++        preprocess_config: Preprocessing configuration
++        return_segments: If True, return segmentation data for prosody JSON
++        
++    Returns:
++        If return_segments is False: numpy array of phoneme sequence
++        If return_segments is True: (numpy array, segments_data)
++            segments_data is a list of dicts with 'text' and 'phonemes' for each character/space
++    """
++    lexicon = read_lexicon(preprocess_config["path"]["lexicon_path"])
++
++    phones = []
++    segments_data = [] if return_segments else None
++    
++    pinyins = [
++        p[0]
++        for p in pinyin(
++            text, style=Style.TONE3, strict=False, neutral_tone_with_five=True
++        )
++    ]
++    
++    char_idx = 0
++    for char in text:
++        char_phones = []
++        
++        if char.isspace():
++            # Space character
++            char_phones = ["sp"]
++            if return_segments:
++                segments_data.append({
++                    "type": "space",
++                    "text": char,
++                    "phonemes": char_phones
++                })
++        else:
++            # Regular character - get its pinyin and phonemes
++            if char_idx < len(pinyins):
++                p = pinyins[char_idx]
++                char_idx += 1
++                
++                if p in lexicon:
++                    char_phones = lexicon[p]
++                else:
++                    char_phones = ["sp"]
++                
++                if return_segments:
++                    segments_data.append({
++                        "type": "character",
++                        "text": char,
++                        "pinyin": p,
++                        "phonemes": char_phones
++                    })
++        
++        phones += char_phones
++
++    phones = "{" + " ".join(phones) + "}"
++    print("Raw Text Sequence: {}".format(text))
++    print("Phoneme Sequence: {}".format(phones))
++    sequence = np.array(
++        text_to_sequence(
++            phones, preprocess_config["preprocessing"]["text"]["text_cleaners"]
++        )
++    )
++
++    if return_segments:
++        return np.array(sequence), segments_data
++    return np.array(sequence)
++
++
+ def to_device(data, device):
+     if len(data) == 12:
+         (
+@@ -56,6 +213,16 @@ def to_device(data, device):
+             durations,
+         )
+ 
++    if len(data) == 7:
++        # Single mode with segments_data
++        (ids, raw_texts, speakers, texts, src_lens, max_src_len, segments_data_list) = data
++
++        speakers = torch.from_numpy(speakers).long().to(device)
++        texts = torch.from_numpy(texts).long().to(device)
++        src_lens = torch.from_numpy(src_lens).to(device)
++
++        return (ids, raw_texts, speakers, texts, src_lens, max_src_len, segments_data_list)
++
+     if len(data) == 6:
+         (ids, raw_texts, speakers, texts, src_lens, max_src_len) = data
+ 
+@@ -106,6 +273,39 @@ def expand(values, durations):
+     return np.array(out)
+ 
+ 
++def extract_pitch_from_audio(wav, sampling_rate, hop_length):
++    """
++    Extract F0 (pitch) from audio waveform using PyWorld.
++    
++    Args:
++        wav: Audio waveform (numpy array)
++        sampling_rate: Sampling rate of the audio
++        hop_length: Hop length for STFT
++    
++    Returns:
++        pitch: F0 contour (numpy array)
++    """
++    pitch, t = pw.dio(
++        wav.astype(np.float64),
++        sampling_rate,
++        frame_period=hop_length / sampling_rate * 1000,
++    )
++    pitch = pw.stonemask(wav.astype(np.float64), pitch, t, sampling_rate)
++    
++    # Perform linear interpolation for unvoiced regions
++    nonzero_ids = np.where(pitch != 0)[0]
++    if len(nonzero_ids) > 1:
++        interp_fn = interp1d(
++            nonzero_ids,
++            pitch[nonzero_ids],
++            fill_value=(pitch[nonzero_ids[0]], pitch[nonzero_ids[-1]]),
++            bounds_error=False,
++        )
++        pitch = interp_fn(np.arange(0, len(pitch)))
++    
++    return pitch
++
++
+ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_config):
+     from text.symbols import symbols
+ 
+@@ -170,12 +370,99 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+     return fig, wav_reconstruction, wav_prediction, basename
+ 
+ 
++def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_length, sampling_rate, segments_data):
++    """
++    Generate prosody JSON data structure from text, phonemes, durations and pitch.
++    
++    Args:
++        raw_text: Original input text (e.g., "大家好")
++        phonemes: List of phoneme symbols (e.g., ["d", "a4", "j", "ia1", ...])
++        durations: Duration for each phoneme in frames
++        actual_pitch: Actual pitch contour extracted from audio
++        hop_length: STFT hop length
++        sampling_rate: Audio sampling rate
++        segments_data: List of segment dicts from preprocess_mandarin/preprocess_english
++                       Each dict has 'type', 'text', and 'phonemes'
++    
++    Returns:
++        Dictionary with prosody data in the specified format
++    """
++    segments = []
++    phoneme_idx = 0
++    
++    # Process each segment from the preprocessing
++    for segment in segments_data:
++        if segment["type"] == "space":
++            # Space segment
++            space_duration = 0
++            # Consume phonemes for this space
++            for _ in range(len(segment["phonemes"])):
++                if phoneme_idx < len(phonemes):
++                    space_duration += int(durations[phoneme_idx] * hop_length)
++                    phoneme_idx += 1
++            
++            if space_duration > 0:
++                segments.append({
++                    "type": "space",
++                    "durationTicks": space_duration
++                })
++        else:
++            # Character or word segment
++            char_phonemes = []
++            char_duration_ticks = 0
++            
++            # Consume phonemes for this character/word
++            for phon in segment["phonemes"]:
++                if phoneme_idx < len(phonemes):
++                    dur_ticks = int(durations[phoneme_idx] * hop_length)
++                    
++                    char_phonemes.append({
++                        "phoneme": phonemes[phoneme_idx].replace('@', ''),
++                        "durationTicks": dur_ticks
++                    })
++                    
++                    char_duration_ticks += dur_ticks
++                    phoneme_idx += 1
++            
++            # Remove durationTicks from the last phoneme (as per spec)
++            if char_phonemes:
++                del char_phonemes[-1]["durationTicks"]
++            
++            # Add character/word segment
++            if char_phonemes:
++                segments.append({
++                    "text": segment["text"],
++                    "durationTicks": char_duration_ticks,
++                    "phonemes": char_phonemes
++                })
++    
++    # Prepare actual pitch data
++    ticks_per_point = hop_length
++    pitch_points = [float(p) for p in actual_pitch]
++    
++    prosody_data = {
++        "inputText": raw_text,
++        "ticksPerSecond": sampling_rate,
++        "segments": segments,
++        "actualPitches": {
++            "ticksPerPoint": ticks_per_point,
++            "points": pitch_points
++        }
++    }
++    
++    return prosody_data
++
++
+ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config, path):
+     from text.symbols import symbols
+ 
+     basenames = targets[0]
++    raw_texts = targets[1]  # raw text input
+     text_indices = targets[3]  # phoneme indices
+     
++    # Extract segments_data if available (for single mode)
++    segments_data_list = targets[6] if len(targets) > 6 else None
++    
+     for i in range(len(predictions[0])):
+         basename = basenames[i]
+         src_len = predictions[8][i].item()
+@@ -214,7 +501,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+             durations=[duration],
+         )
+         os.makedirs(path, exist_ok=True)
+-        plt.savefig(os.path.join(path, "{}.png".format(basename)))
++        plt.savefig(os.path.join(path, "{}.png".format(basename)), dpi=200)
+         plt.close()
+ 
+     from .model import vocoder_infer
+@@ -226,11 +513,88 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+     )
+ 
+     sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+-    for wav, basename in zip(wav_predictions, basenames):
++    hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++    
++    # Generate comparison spectrograms with actual pitch overlay and prosody JSON
++    for idx, (wav, basename) in enumerate(zip(wav_predictions, basenames)):
++        # Save audio file
+         wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
++        
++        # Extract actual pitch from generated audio
++        actual_pitch = extract_pitch_from_audio(wav, sampling_rate, hop_length)
++        
++        # Get the corresponding prediction data
++        src_len = predictions[8][idx].item()
++        mel_len = predictions[9][idx].item()
++        mel_prediction = predictions[1][idx, :mel_len].detach().transpose(0, 1).cpu().numpy()
++        duration = predictions[5][idx, :src_len].detach().cpu().numpy()
++        
++        # Get phonemes
++        phoneme_indices = text_indices[idx, :src_len].detach().cpu().numpy()
++        phonemes = [symbols[idx] for idx in phoneme_indices]
++        
++        # Get predicted pitch and energy
++        if preprocess_config["preprocessing"]["pitch"]["feature"] == "phoneme_level":
++            predicted_pitch = predictions[2][idx, :src_len].detach().cpu().numpy()
++            predicted_pitch = expand(predicted_pitch, duration)
++        else:
++            predicted_pitch = predictions[2][idx, :mel_len].detach().cpu().numpy()
++            
++        if preprocess_config["preprocessing"]["energy"]["feature"] == "phoneme_level":
++            energy = predictions[3][idx, :src_len].detach().cpu().numpy()
++            energy = expand(energy, duration)
++        else:
++            energy = predictions[3][idx, :mel_len].detach().cpu().numpy()
++        
++        # Load stats for the overlay plot
++        with open(
++            os.path.join(preprocess_config["path"]["preprocessed_path"], "stats.json")
++        ) as f:
++            stats = json.load(f)
++            stats = stats["pitch"] + stats["energy"][:2]
++        
++        # Create comparison plot with both predicted and actual pitch using plot_mel
++        plot_mel(
++            [(mel_prediction, predicted_pitch, energy)],
++            stats,
++            ["Spectrogram with Predicted vs Actual Pitch"],
++            phonemes=[phonemes],
++            durations=[duration],
++            actual_pitch=[actual_pitch],
++        )
++        os.makedirs(path, exist_ok=True)
++        plt.savefig(os.path.join(path, "{}.actual.png".format(basename)), dpi=200)
++        plt.close()
++        
++        # Generate prosody JSON file if segments_data is available
++        if segments_data_list is not None and idx < len(segments_data_list):
++            raw_text = raw_texts[idx]
++            segments_data = segments_data_list[idx]
++            
++            prosody_data = generate_prosody_json(
++                raw_text, phonemes, duration, actual_pitch, hop_length, sampling_rate, segments_data
++            )
++            
++            json_path = os.path.join(path, "{}.prosody.json".format(basename))
++            with open(json_path, 'w', encoding='utf-8') as f:
++                json.dump(prosody_data, f, indent=2, ensure_ascii=False)
+ 
+ 
+-def plot_mel(data, stats, titles, phonemes=None, durations=None):
++def plot_mel(data, stats, titles, phonemes=None, durations=None, actual_pitch=None):
++    """
++    Plot mel spectrograms with pitch and energy overlays.
++    
++    Args:
++        data: List of tuples (mel, pitch, energy)
++        stats: Statistics [pitch_min, pitch_max, pitch_mean, pitch_std, energy_min, energy_max]
++        titles: List of titles for each subplot
++        phonemes: List of phoneme lists for each subplot
++        durations: List of duration lists for each subplot
++        actual_pitch: List of actual pitch arrays extracted from audio (optional)
++    
++    Returns:
++        fig: Matplotlib figure
++    """
+     # Calculate dynamic figure width based on mel spectrogram length
+     max_mel_length = max(d[0].shape[1] for d in data)
+     # Scale width: base width of 6, plus additional width proportional to length
+@@ -262,7 +626,7 @@ def plot_mel(data, stats, titles, phonemes=None, durations=None):
+         axes[i][0].set_anchor("W")
+         
+         # Move x-axis to bottom and add padding for phonemes
+-        axes[i][0].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True, pad=10)
++        axes[i][0].tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True, pad=20)
+         
+         # Add phonemes at the bottom if provided
+         if phonemes is not None and durations is not None:
+@@ -297,7 +661,7 @@ def plot_mel(data, stats, titles, phonemes=None, durations=None):
+                         ha='center',
+                         va='top',
+                         fontsize=7,
+-                        rotation=0,
++                        rotation=45,
+                         zorder=4,
+                         clip_on=False
+                     )
+@@ -313,17 +677,42 @@ def plot_mel(data, stats, titles, phonemes=None, durations=None):
+                                color='white', linewidth=0.8, alpha=0.7, 
+                                linestyle='-', zorder=3)
+ 
++        # Plot pitch overlay
+         ax1 = add_axis(fig, axes[i][0])
+-        ax1.plot(pitch, color="tomato")
++        
++        # Check if we have actual pitch to overlay
++        has_actual_pitch = actual_pitch is not None and i < len(actual_pitch) and actual_pitch[i] is not None
++        
++        if has_actual_pitch:
++            # Plot predicted pitch with label
++            ax1.plot(pitch, color="tomato", linewidth=2, label="Predicted F0", alpha=0.8)
++            
++            # Plot actual pitch from audio
++            actual_p = actual_pitch[i]
++            mel_length = mel.shape[1]
++            
++            # Truncate or pad actual_pitch to match mel length
++            if len(actual_p) > mel_length:
++                actual_p = actual_p[:mel_length]
++            elif len(actual_p) < mel_length:
++                actual_p = np.pad(actual_p, (0, mel_length - len(actual_p)), 
++                                 mode='constant', constant_values=actual_p[-1] if len(actual_p) > 0 else 0)
++            
++            ax1.plot(actual_p, color="cyan", linewidth=2, label="Actual F0", alpha=0.8, linestyle='--')
++            ax1.set_ylabel("F0 (Hz)", color="black")
++            ax1.tick_params(labelsize="x-small", colors="black", bottom=False, labelbottom=False)
++            ax1.legend(loc='upper right', fontsize='x-small')
++        else:
++            # Plot only predicted pitch without label
++            ax1.plot(pitch, color="tomato", linewidth=1)
++            ax1.set_ylabel("F0", color="tomato")
++            ax1.tick_params(labelsize="x-small", colors="tomato", bottom=False, labelbottom=False)
++        
+         ax1.set_xlim(0, mel.shape[1])
+         ax1.set_ylim(0, pitch_max)
+-        ax1.set_ylabel("F0", color="tomato")
+-        ax1.tick_params(
+-            labelsize="x-small", colors="tomato", bottom=False, labelbottom=False
+-        )
+ 
+         ax2 = add_axis(fig, axes[i][0])
+-        ax2.plot(energy, color="darkviolet")
++        ax2.plot(energy, color="darkviolet", linewidth=1.5, alpha=0.6 if has_actual_pitch else 1.0)
+         ax2.set_xlim(0, mel.shape[1])
+         ax2.set_ylim(energy_min, energy_max)
+         ax2.set_ylabel("Energy", color="darkviolet")
+-- 
+2.50.1
+

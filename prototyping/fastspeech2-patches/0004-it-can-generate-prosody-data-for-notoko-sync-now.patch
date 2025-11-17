@@ -1,0 +1,345 @@
+From a128adbc2ca4e8efb7edd835f360c7ebafaf6e9a Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Sun, 16 Nov 2025 16:02:15 +0800
+Subject: [PATCH 4/5] it can generate prosody data for notoko-sync now
+
+I Squashed 10 commits that I committed arbitrarily into one.
+As always, Copilot helps a lot.
+---
+ utils/tools.py | 171 +++++++++++++++++++++++++++++++++++++++----------
+ 1 file changed, 136 insertions(+), 35 deletions(-)
+
+diff --git a/utils/tools.py b/utils/tools.py
+index 3e314af..9365027 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -2,6 +2,8 @@ import os
+ import json
+ import re
+ from string import punctuation
++import base64
++import struct
+ 
+ import torch
+ import torch.nn.functional as F
+@@ -273,22 +275,24 @@ def expand(values, durations):
+     return np.array(out)
+ 
+ 
+-def extract_pitch_from_audio(wav, sampling_rate, hop_length):
++def extract_pitch_from_audio(wav, sampling_rate, ticks_per_point=256):
+     """
+     Extract F0 (pitch) from audio waveform using PyWorld.
+     
+     Args:
+         wav: Audio waveform (numpy array)
+         sampling_rate: Sampling rate of the audio
+-        hop_length: Hop length for STFT
++        ticks_per_point: Number of audio samples between each pitch point (default: 256)
+     
+     Returns:
+         pitch: F0 contour (numpy array)
+     """
++    # Calculate frame period from ticks_per_point
++    frame_period = ticks_per_point / sampling_rate * 1000
+     pitch, t = pw.dio(
+         wav.astype(np.float64),
+         sampling_rate,
+-        frame_period=hop_length / sampling_rate * 1000,
++        frame_period=frame_period,
+     )
+     pitch = pw.stonemask(wav.astype(np.float64), pitch, t, sampling_rate)
+     
+@@ -370,34 +374,44 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+     return fig, wav_reconstruction, wav_prediction, basename
+ 
+ 
+-def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_length, sampling_rate, segments_data):
++def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_length, sampling_rate, segments_data, ticks_per_point=256, language="mandarin", total_duration_ticks=None):
+     """
+     Generate prosody JSON data structure from text, phonemes, durations and pitch.
+     
+     Args:
+         raw_text: Original input text (e.g., "大家好")
+         phonemes: List of phoneme symbols (e.g., ["d", "a4", "j", "ia1", ...])
+-        durations: Duration for each phoneme in frames
+-        actual_pitch: Actual pitch contour extracted from audio
+-        hop_length: STFT hop length
++        durations: Duration for each phoneme in frames (mel frames, not samples!)
++        actual_pitch: Actual pitch contour extracted from audio (one value per sample)
++        hop_length: STFT hop length (samples per mel frame)
+         sampling_rate: Audio sampling rate
+         segments_data: List of segment dicts from preprocess_mandarin/preprocess_english
+                        Each dict has 'type', 'text', and 'phonemes'
++        ticks_per_point: Number of audio samples between each pitch point (default: 256)
++        language: Language of the input text, either "mandarin" or "english" (default: "mandarin")
++        total_duration_ticks: Actual audio duration in samples (if provided, overrides duration calculation)
+     
+     Returns:
+         Dictionary with prosody data in the specified format
+     """
++    from text.pinyin import valid_symbols
++    
++    # The durations are in mel frames, need to convert to samples (ticks)
++    # Each mel frame = hop_length samples
++    # But if total_duration_ticks is provided, use that as the actual audio length
++    
+     segments = []
+     phoneme_idx = 0
+     
+     # Process each segment from the preprocessing
+-    for segment in segments_data:
++    for segment_num, segment in enumerate(segments_data):
+         if segment["type"] == "space":
+             # Space segment
+             space_duration = 0
+             # Consume phonemes for this space
+             for _ in range(len(segment["phonemes"])):
+                 if phoneme_idx < len(phonemes):
++                    # Convert mel frames to samples
+                     space_duration += int(durations[phoneme_idx] * hop_length)
+                     phoneme_idx += 1
+             
+@@ -414,39 +428,71 @@ def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_lengt
+             # Consume phonemes for this character/word
+             for phon in segment["phonemes"]:
+                 if phoneme_idx < len(phonemes):
++                    # Convert mel frames to samples
+                     dur_ticks = int(durations[phoneme_idx] * hop_length)
+                     
+-                    char_phonemes.append({
+-                        "phoneme": phonemes[phoneme_idx].replace('@', ''),
++                    # Clean up phoneme (remove @ prefix)
++                    raw_phoneme = phonemes[phoneme_idx].replace('@', '')
++                    
++                    # Create phoneme entry with renamed field
++                    phoneme_entry = {
++                        "rawText": raw_phoneme,
+                         "durationTicks": dur_ticks
+-                    })
++                    }
++                    
++                    if raw_phoneme in valid_symbols or raw_phoneme.rstrip('12345') in valid_symbols:
++                        phoneme_entry["fsPinyin"] = raw_phoneme.rstrip('12345')
++                    
++                    char_phonemes.append(phoneme_entry)
+                     
+                     char_duration_ticks += dur_ticks
+                     phoneme_idx += 1
+             
+-            # Remove durationTicks from the last phoneme (as per spec)
+-            if char_phonemes:
+-                del char_phonemes[-1]["durationTicks"]
+-            
+             # Add character/word segment
+             if char_phonemes:
+                 segments.append({
+                     "text": segment["text"],
+-                    "durationTicks": char_duration_ticks,
+                     "phonemes": char_phonemes
+                 })
+     
+-    # Prepare actual pitch data
+-    ticks_per_point = hop_length
+-    pitch_points = [float(p) for p in actual_pitch]
++    # Calculate total duration from segments
++    calculated_total = sum(sum(phoneme["durationTicks"] for phoneme in seg["phonemes"]) for seg in segments)
++    
++    # The actual_pitch array should align with the actual audio
++    # Resample the pitch to match segment durations if they don't match
++    if len(actual_pitch) != calculated_total:
++        from scipy.interpolate import interp1d
++        if len(actual_pitch) > 1:
++            # Create interpolation function to resample pitch
++            old_x = np.linspace(0, calculated_total - 1, len(actual_pitch))
++            new_x = np.arange(calculated_total)
++            interp_func = interp1d(old_x, actual_pitch, kind='linear', 
++                                  bounds_error=False, 
++                                  fill_value=(actual_pitch[0], actual_pitch[-1]))
++            actual_pitch = interp_func(new_x)
++        else:
++            # Single point - just replicate
++            actual_pitch = np.full(calculated_total, actual_pitch[0] if len(actual_pitch) > 0 else 0)
++    
++    # Use the provided ticks_per_point directly
++    # Convert pitch points to pointsPackedV1 format:
++    # Base64 encoded string where every 4 bytes represents a point
++    # Each point is a little-endian float32
++    pitch_floats = [float(p) for p in actual_pitch]
++    # Pack all floats as little-endian float32 (4 bytes each)
++    packed_bytes = b''.join(struct.pack('<f', p) for p in pitch_floats)
++    # Encode to base64
++    points_packed_v1 = base64.b64encode(packed_bytes).decode('ascii')
+     
+     prosody_data = {
++        "$schema": "https://raw.githubusercontent.com/umajho/notoko/main/schemata/notoko-prosody-data.v1.json",
++        "defaultLanguage": language,
+         "inputText": raw_text,
+         "ticksPerSecond": sampling_rate,
+         "segments": segments,
+         "actualPitches": {
+             "ticksPerPoint": ticks_per_point,
+-            "points": pitch_points
++            "pointsPackedV1": points_packed_v1
+         }
+     }
+     
+@@ -463,6 +509,15 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+     # Extract segments_data if available (for single mode)
+     segments_data_list = targets[6] if len(targets) > 6 else None
+     
++    # Extract language from preprocess_config and map to output format
++    lang_code = preprocess_config["preprocessing"]["text"]["language"]
++    if lang_code == "zh":
++        language = "mandarin"
++    elif lang_code == "en":
++        language = "english"
++    else:
++        raise ValueError(f"Unsupported language code: {lang_code}. Only 'zh' (mandarin) and 'en' (english) are supported.")
++    
+     for i in range(len(predictions[0])):
+         basename = basenames[i]
+         src_len = predictions[8][i].item()
+@@ -515,20 +570,33 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+     sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+     hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
+     
++    # Define ticks per point for pitch extraction
++    ticks_per_point = 1
++    
+     # Generate comparison spectrograms with actual pitch overlay and prosody JSON
+     for idx, (wav, basename) in enumerate(zip(wav_predictions, basenames)):
+         # Save audio file
+         wavfile.write(os.path.join(path, "{}.wav".format(basename)), sampling_rate, wav)
+         
+-        # Extract actual pitch from generated audio
+-        actual_pitch = extract_pitch_from_audio(wav, sampling_rate, hop_length)
+-        
+         # Get the corresponding prediction data
+         src_len = predictions[8][idx].item()
+         mel_len = predictions[9][idx].item()
+         mel_prediction = predictions[1][idx, :mel_len].detach().transpose(0, 1).cpu().numpy()
+         duration = predictions[5][idx, :src_len].detach().cpu().numpy()
+         
++        # Use the ACTUAL audio length as the ground truth
++        actual_audio_length = len(wav)
++        
++        # Extract actual pitch from generated audio
++        actual_pitch = extract_pitch_from_audio(wav, sampling_rate, ticks_per_point)
++        
++        # The actual pitch length should match the actual audio length
++        # Ensure pitch array matches actual audio length exactly
++        if len(actual_pitch) < actual_audio_length:
++            actual_pitch = np.pad(actual_pitch, (0, actual_audio_length - len(actual_pitch)), mode='edge')
++        elif len(actual_pitch) > actual_audio_length:
++            actual_pitch = actual_pitch[:actual_audio_length]
++        
+         # Get phonemes
+         phoneme_indices = text_indices[idx, :src_len].detach().cpu().numpy()
+         phonemes = [symbols[idx] for idx in phoneme_indices]
+@@ -561,6 +629,8 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+             phonemes=[phonemes],
+             durations=[duration],
+             actual_pitch=[actual_pitch],
++            ticks_per_point=ticks_per_point,
++            hop_length=hop_length,
+         )
+         os.makedirs(path, exist_ok=True)
+         plt.savefig(os.path.join(path, "{}.actual.png".format(basename)), dpi=200)
+@@ -572,7 +642,8 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+             segments_data = segments_data_list[idx]
+             
+             prosody_data = generate_prosody_json(
+-                raw_text, phonemes, duration, actual_pitch, hop_length, sampling_rate, segments_data
++                raw_text, phonemes, duration, actual_pitch, hop_length, sampling_rate, 
++                segments_data, ticks_per_point, language, actual_audio_length
+             )
+             
+             json_path = os.path.join(path, "{}.prosody.json".format(basename))
+@@ -580,7 +651,7 @@ def synth_samples(targets, predictions, vocoder, model_config, preprocess_config
+                 json.dump(prosody_data, f, indent=2, ensure_ascii=False)
+ 
+ 
+-def plot_mel(data, stats, titles, phonemes=None, durations=None, actual_pitch=None):
++def plot_mel(data, stats, titles, phonemes=None, durations=None, actual_pitch=None, ticks_per_point=None, hop_length=None):
+     """
+     Plot mel spectrograms with pitch and energy overlays.
+     
+@@ -591,6 +662,8 @@ def plot_mel(data, stats, titles, phonemes=None, durations=None, actual_pitch=No
+         phonemes: List of phoneme lists for each subplot
+         durations: List of duration lists for each subplot
+         actual_pitch: List of actual pitch arrays extracted from audio (optional)
++        ticks_per_point: Number of audio samples between each pitch point (optional)
++        hop_length: STFT hop length for mel spectrogram alignment (optional)
+     
+     Returns:
+         fig: Matplotlib figure
+@@ -684,27 +757,55 @@ def plot_mel(data, stats, titles, phonemes=None, durations=None, actual_pitch=No
+         has_actual_pitch = actual_pitch is not None and i < len(actual_pitch) and actual_pitch[i] is not None
+         
+         if has_actual_pitch:
+-            # Plot predicted pitch with label
+-            ax1.plot(pitch, color="tomato", linewidth=2, label="Predicted F0", alpha=0.8)
++            # Plot predicted pitch with label (dashed line, very thin)
++            ax1.plot(pitch, color="tomato", linewidth=1.5, label="Predicted F0", linestyle='--')
+             
+             # Plot actual pitch from audio
+             actual_p = actual_pitch[i]
+             mel_length = mel.shape[1]
+             
+-            # Truncate or pad actual_pitch to match mel length
+-            if len(actual_p) > mel_length:
+-                actual_p = actual_p[:mel_length]
+-            elif len(actual_p) < mel_length:
+-                actual_p = np.pad(actual_p, (0, mel_length - len(actual_p)), 
+-                                 mode='constant', constant_values=actual_p[-1] if len(actual_p) > 0 else 0)
++            # Resample actual_pitch to match mel spectrogram time axis
++            # actual_pitch is sampled at ticks_per_point intervals
++            # mel spectrogram is sampled at hop_length intervals
++            if ticks_per_point is not None and hop_length is not None and ticks_per_point != hop_length:
++                # Create x coordinates for actual pitch (in units of hop_length)
++                actual_x = np.arange(len(actual_p)) * (ticks_per_point / hop_length)
++                # Create target x coordinates for mel frames with higher sampling density
++                # Increase sampling density by 4x for smoother actual F0 curve
++                sampling_density = 4
++                mel_x_dense = np.linspace(0, mel_length - 1, mel_length * sampling_density)
++                
++                # Interpolate actual pitch to dense mel time axis
++                if len(actual_p) > 1:
++                    from scipy.interpolate import interp1d
++                    # Use linear interpolation, extrapolate if necessary
++                    interp_func = interp1d(actual_x, actual_p, kind='linear', 
++                                          bounds_error=False, 
++                                          fill_value=(actual_p[0], actual_p[-1]))
++                    actual_p_aligned = interp_func(mel_x_dense)
++                else:
++                    actual_p_aligned = np.full(len(mel_x_dense), actual_p[0] if len(actual_p) > 0 else 0)
++                
++                # Plot with dense x coordinates (very thin line)
++                ax1.plot(mel_x_dense, actual_p_aligned, color="cyan", linewidth=0.5, label="Actual F0")
++            else:
++                # No resampling needed, just truncate or pad
++                if len(actual_p) > mel_length:
++                    actual_p_aligned = actual_p[:mel_length]
++                elif len(actual_p) < mel_length:
++                    actual_p_aligned = np.pad(actual_p, (0, mel_length - len(actual_p)), 
++                                     mode='constant', constant_values=actual_p[-1] if len(actual_p) > 0 else 0)
++                else:
++                    actual_p_aligned = actual_p
++                
++                ax1.plot(actual_p_aligned, color="cyan", linewidth=0.5, label="Actual F0", alpha=0.9, linestyle='-')
+             
+-            ax1.plot(actual_p, color="cyan", linewidth=2, label="Actual F0", alpha=0.8, linestyle='--')
+             ax1.set_ylabel("F0 (Hz)", color="black")
+             ax1.tick_params(labelsize="x-small", colors="black", bottom=False, labelbottom=False)
+             ax1.legend(loc='upper right', fontsize='x-small')
+         else:
+             # Plot only predicted pitch without label
+-            ax1.plot(pitch, color="tomato", linewidth=1)
++            ax1.plot(pitch, color="tomato", linewidth=1.5, linestyle='--')
+             ax1.set_ylabel("F0", color="tomato")
+             ax1.tick_params(labelsize="x-small", colors="tomato", bottom=False, labelbottom=False)
+         
+-- 
+2.50.1
+
