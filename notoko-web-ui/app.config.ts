@@ -6,4 +6,7 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   ssr: false,
+  server: {
+    esbuild: { options: { target: "esnext" } },
+  },
 });

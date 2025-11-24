@@ -10,10 +10,12 @@
     "allowJs": true,
     "noEmit": true,
     "strict": true,
-    "types": ["vinxi/types/client"],
+    "types": ["vinxi/types/client", "node"],
     "isolatedModules": true,
     "paths": {
       "~/*": ["./src/*"]
-    }
+    },
+    "verbatimModuleSyntax": true,
+    "noUncheckedIndexedAccess": true
   }
 }
