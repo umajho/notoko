@@ -8,6 +8,14 @@
    - IIRC you need to decompress `hifigan/*.pth.tar.zip` into
      `hifigan/*.pth.tar`.
 4. apply patches. (based on `d4e79eb52e8b01d24703b2dfc0385544092958f3`)
+
+   > [!CAUTION]
+   >
+   > The works are mostly done by LLMs (GitHub Copilot Agent Mode) with
+   > instructions from a person who had little understanding on the topic.
+   > Personally, I disapprove of building further works on top of these patches
+   > directly except for prototyping.
+
 5. troubleshhot. It works on my machine, but I'm not sure had I (GitHub Copilot,
    actually) made changes that would break on other platforms…
 6. run (assuming you use `uv`):
