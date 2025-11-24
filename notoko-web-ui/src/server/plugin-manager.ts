@@ -16,20 +16,23 @@ import { createStore, type SetStoreFunction } from "solid-js/store";
 
 import {
   DATA_PLUGIN_DATA_PATH,
+  type Plugin,
+  type PluginContext,
   type PluginFunctionality,
   PluginFunctionalityAbsolutePath,
   PluginFunctionalityKey,
-  type PluginNode,
-  type PluginNodeContext,
-  PluginNodeKey,
-  type PluginNodeSingleton,
-  type PluginNodeStatus,
-  RootPluginNodeId,
+  PluginId,
+  type PluginStatus,
 } from "~/definitions";
 
+/**
+ * NOTE: `*TreeNode` and `*Tree` are historical names for the tree-based plugin
+ * system I had conceived at first. They should just be called something like
+ * `*MapEntry` and `*Map` now.
+ */
 interface RuntimeTreeNode {
-  plugin: PluginNode;
-  status: PluginNodeStatus;
+  plugin: Plugin;
+  status: PluginStatus;
   changeStaticConfiguration: (config: object) => void;
   requestRefresh: () => void;
   dispose: (untilChildrenDisposed: Promise<void>) => Promise<void>;
@@ -37,11 +40,10 @@ interface RuntimeTreeNode {
 
 interface PersistentDataTreeNode {
   staticConfiguration: object;
-  children: Record<PluginNodeKey, PersistentDataTreeNode>;
 }
 
 export type RegisterPluginErrorContent =
-  | ["id_conflict", { conflictedId: RootPluginNodeId }]
+  | ["id_conflict", { conflictedId: PluginId }]
   | ["bad_id", { id: string; error: z.ZodError }];
 
 function makePluginManager() {
@@ -51,14 +53,13 @@ function makePluginManager() {
   } = createPersistentDataTrees();
 
   const [$runtimeTree, _set$runtimeTree] = //
-    createStore<Record<RootPluginNodeId, RuntimeTreeNode>>({});
-  const [$rootPluginNodeIds, set$rootPluginNodeIds] = //
-    createSignal<RootPluginNodeId[]>([]);
+    createStore<Record<PluginId, RuntimeTreeNode>>({});
+  const [$pluginIds, set$pluginIds] = createSignal<PluginId[]>([]);
   const set$runtimeTree = new Proxy(_set$runtimeTree, {
     apply: (target, thisArg, args) => {
       batch(() => {
         Reflect.apply(target, thisArg, args);
-        set$rootPluginNodeIds(Object.keys($runtimeTree) as RootPluginNodeId[]);
+        set$pluginIds(Object.keys($runtimeTree) as PluginId[]);
       });
     },
   });
@@ -83,22 +84,22 @@ function makePluginManager() {
   ));
 
   async function registerPlugin(
-    rootPluginMap: Record<RootPluginNodeId, PluginNode>,
+    pluginMap: Record<PluginId, Plugin>,
   ): Promise<["ok"] | ["error", RegisterPluginErrorContent[]]> {
     const errors: RegisterPluginErrorContent[] = [];
 
-    for (const [id, node] of Object.entries(rootPluginMap)) {
+    for (const [id, node] of Object.entries(pluginMap)) {
       if (id in $runtimeTree) throw new Error("TODO: handle id conflict.");
       switch (node.type) {
-        case "plugin_node:singleton": {
-          const idResult = RootPluginNodeId.safeParse(id);
+        case "plugin:singleton": {
+          const idResult = PluginId.safeParse(id);
           if (!idResult.success) {
             errors.push(["bad_id", { id, error: idResult.error }]);
             continue;
           }
-          const rootPluginNodeId = idResult.data;
+          const pluginId = idResult.data;
           const { context, changeStaticConfiguration, requestRefresh } =
-            createContext(rootPluginNodeId, [], {
+            createContext(pluginId, {
               set$runtimeTree,
               set$functionalities,
             });
@@ -113,14 +114,13 @@ function makePluginManager() {
               );
             },
           };
-          set$runtimeTree(rootPluginNodeId, rtmNode);
+          set$runtimeTree(pluginId, rtmNode);
 
           rtmNode.plugin.entry(context);
 
           const staticConfigurationAccessor =
             await getStaticConfigurationAccessor(
-              rootPluginNodeId,
-              [],
+              pluginId,
               node.defaultStaticConfiguration,
             );
           createEffect(on(
@@ -129,7 +129,7 @@ function makePluginManager() {
           ));
           break;
         }
-        case "plugin_node:multiton": {
+        case "plugin:multiton": {
           throw new Error(
             "TODO: implement registering multition plugin nodes.",
           );
@@ -147,27 +147,20 @@ function makePluginManager() {
   }
 
   function getInfoAccessor(
-    rootPluginNodeId: RootPluginNodeId,
-    subPath: PluginNodeKey[],
-  ): Accessor<PluginNode["info"] | null> {
-    if (subPath.length > 0) {
-      throw new Error(
-        "TODO: implement `getInfoAccessor` when there is a subPath.",
-      );
-    }
-
+    pluginId: PluginId,
+  ): Accessor<Plugin["info"] | null> {
     return createMemo(on(
       () => $runtimeTree,
       (tree) => {
-        if (!(rootPluginNodeId in tree)) return null;
-        return tree[rootPluginNodeId]!.plugin.info;
+        if (!(pluginId in tree)) return null;
+        return tree[pluginId]!.plugin.info;
       },
     ));
   }
 
   return {
     registerPlugin,
-    $rootPluginNodeIds,
+    $pluginIds,
     getInfoAccessor,
     $phonemizers,
     $durationPredictors,
@@ -177,28 +170,20 @@ function makePluginManager() {
   };
 }
 
-function createContext(
-  rootPluginNodeId: RootPluginNodeId,
-  subPath: PluginNodeKey[],
-  opts: {
-    set$runtimeTree: //
-      SetStoreFunction<Record<RootPluginNodeId, RuntimeTreeNode>>;
-    set$functionalities: Setter<
-      Record<PluginFunctionalityAbsolutePath, PluginFunctionality>
-    >;
-  },
-) {
-  if (subPath.length > 0) {
-    throw new Error("TODO: implement `createContext` when there is a subPath.");
-  }
-
+function createContext(pluginId: PluginId, opts: {
+  set$runtimeTree: //
+    SetStoreFunction<Record<PluginId, RuntimeTreeNode>>;
+  set$functionalities: Setter<
+    Record<PluginFunctionalityAbsolutePath, PluginFunctionality>
+  >;
+}) {
   let changeStaticConfigurationHandler:
     | ((config: object) => void)
     | null = null;
   let pendingStaticConfigurationChange: object | null = null;
   let requestRefreshHandler: (() => void) | null = null;
   let hasPendingRefreshRequest = false;
-  const context: PluginNodeContext = {
+  const context: PluginContext = {
     set onChangeStaticConfiguration(
       handler: (config: object) => void,
     ) {
@@ -224,22 +209,14 @@ function createContext(
         "TODO: implement `set onDispose` on `PluginNodeContext`.",
       );
     },
-    setStatus: (status: PluginNodeStatus) => {
-      opts.set$runtimeTree(rootPluginNodeId, "status", status);
-    },
-    registerSingletonChildNode: (
-      childPluginKey: PluginNodeKey,
-      node: PluginNodeSingleton,
-    ) => {
-      throw new Error(
-        "TODO: implement `registerSingletonChildNode` on `PluginNodeContext`.",
-      );
+    setStatus: (status: PluginStatus) => {
+      opts.set$runtimeTree(pluginId, "status", status);
     },
     setFunctionalities: (
       functionalities: Record<PluginFunctionalityKey, PluginFunctionality>,
     ) => {
       opts.set$functionalities((old) => {
-        const prefix = rootPluginNodeId + "\0" + subPath.join("\0") + "\0";
+        const prefix = pluginId + "\0";
         const entries = Object.entries(old)
           .filter(([key, _]) => !key.startsWith(prefix));
         for (const [newKey, newF] of Object.entries(functionalities)) {
@@ -272,11 +249,11 @@ function createContext(
 /**
  * TODO:
  * - a function to list all plugin data (even ghost ones).
- * - a function to list all chidren nodes (even ghost ones).
+ * - ~~a function to list all chidren nodes (even ghost ones).~~
  */
 function createPersistentDataTrees() {
   const trees: Record<
-    RootPluginNodeId,
+    PluginId,
     ReturnType<typeof createSignal<PersistentDataTreeNode>>
   > = {};
 
@@ -285,28 +262,20 @@ function createPersistentDataTrees() {
   }): PersistentDataTreeNode {
     return {
       staticConfiguration: opts.defaultStaticConfiguration,
-      children: {},
     };
   }
-  function makeLockName(id: RootPluginNodeId): string {
+  function makeLockName(id: PluginId): string {
     return `notoko:plugin_persistent_data:${id}`;
   }
-  function makeFilePath(id: RootPluginNodeId): string {
+  function makeFilePath(id: PluginId): string {
     return `${DATA_PLUGIN_DATA_PATH}/${id}.json`;
   }
 
   async function set$staticConfiguration(
-    id: RootPluginNodeId,
-    subPath: PluginNodeKey[],
+    id: PluginId,
     value: object,
   ) {
     navigator.locks.request(makeLockName(id), async () => {
-      if (subPath.length > 0) {
-        throw new Error(
-          "TODO: implement `set$staticConfiguration` when there is a subPath.",
-        );
-      }
-
       // `getStaticConfigurationAccessor` should always be called before this,
       // so the tree must exist.
       if (!(id in trees)) throw new Error("unreachable!");
@@ -328,17 +297,10 @@ function createPersistentDataTrees() {
   }
 
   async function getStaticConfigurationAccessor(
-    id: RootPluginNodeId,
-    subPath: PluginNodeKey[],
+    id: PluginId,
     defaultValue: object,
   ): Promise<Accessor<object>> {
     return await navigator.locks.request(makeLockName(id), async () => {
-      if (subPath.length > 0) {
-        throw new Error(
-          "TODO: implement `getStaticConfigurationAccessor` when there is a subPath.",
-        );
-      }
-
       if (id in trees) return trees[id]![0];
 
       const data = await (async (): Promise<PersistentDataTreeNode> => {

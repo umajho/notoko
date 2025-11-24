@@ -1,13 +1,13 @@
 import * as z from "zod/v4";
 
-import { PluginFunctionalityKey, type PluginNode } from "~/definitions";
+import { type Plugin, PluginFunctionalityKey } from "~/definitions";
 
 import * as langCmn from "./basic/lang-cmn";
 
 const StaticConfiguration = z.object({});
 
-export const basicPlugin: PluginNode = {
-  type: "plugin_node:singleton",
+export const basicPlugin: Plugin = {
+  type: "plugin:singleton",
   info: {
     shownName: "Basic Functionalities",
     version: "0.0.1",

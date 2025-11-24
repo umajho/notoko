@@ -33,10 +33,8 @@ function makeNullPunctuatedPartSafeId<Brand extends PropertyKey>() {
     .brand<Brand>();
 }
 
-export const RootPluginNodeId = makeFileStemSafeId<"RootPluginNodeId">();
-export type RootPluginNodeId = z.infer<typeof RootPluginNodeId>;
-export const PluginNodeKey = makeNullPunctuatedPartSafeId<"PluginNodeKey">();
-export type PluginNodeKey = z.infer<typeof PluginNodeKey>;
+export const PluginId = makeFileStemSafeId<"PluginId">();
+export type PluginId = z.infer<typeof PluginId>;
 export const PluginFunctionalityKey = //
   makeNullPunctuatedPartSafeId<"PluginFunctionalityKey">();
 export type PluginFunctionalityKey = z.infer<typeof PluginFunctionalityKey>;
@@ -45,35 +43,35 @@ export const PluginFunctionalityAbsolutePath = z.string()
 export type PluginFunctionalityAbsolutePath = //
   z.infer<typeof PluginFunctionalityAbsolutePath>;
 
-export type PluginNodeStatus = "loading" | "ready" | "error";
+export type PluginStatus = "loading" | "ready" | "error";
 
-type PluginNodeBase = {
+type PluginBase = {
   info: {
     shownName: string;
     version: string;
     staticConfigurationSchema: ["json_schema", object];
   };
-  initialStatus: PluginNodeStatus;
-  entry: (ctx: PluginNodeContext) => void;
+  initialStatus: PluginStatus;
+  entry: (ctx: PluginContext) => void;
   /**
-   * The configuration predefined by the plugin node statically, which means it
-   * cannot be changed after the plugin node is registered.
+   * The configuration predefined by the plugin statically, which means it
+   * cannot be changed after the plugin is registered.
    */
   upgradeStaticConfiguration?: (
     oldConfig: object,
     opts: { fromVersion: string },
   ) => object;
 };
-export type PluginNodeSingleton = PluginNodeBase & {
-  type: "plugin_node:singleton";
+export type PluginSingleton = PluginBase & {
+  type: "plugin:singleton";
   defaultStaticConfiguration: object;
 };
-export type PluginNodeMultiton = PluginNodeBase & {
-  type: "plugin_node:multiton";
+export type PluginMultiton = PluginBase & {
+  type: "plugin:multiton";
   staticConfigurationTemplates: { content: object; isStock: boolean }[];
-  extractKeyFromStaticConfiguration: (config: object) => PluginNodeKey;
+  extractNameFromStaticConfiguration: (config: object) => string;
 };
-export type PluginNode = PluginNodeSingleton | PluginNodeMultiton;
+export type Plugin = PluginSingleton | PluginMultiton;
 
 export type PhonemizeResult =
   | ["ok", PhonemeSegment[]]
@@ -138,20 +136,13 @@ export type PluginFunctionality =
   | PluginFunctionalityDurationPredictor
   | PluginFunctionalityProsodyGenerator;
 
-export interface PluginNodeContext {
+export interface PluginContext {
   set onChangeStaticConfiguration(handler: (config: object) => void);
   set onRequestRefresh(handler: () => void);
   set onDispose(
     handler: (untilChildrenAreDisposed: Promise<void>) => Promise<void>,
   );
-  setStatus: (status: PluginNodeStatus) => void;
-  registerSingletonChildNode: (
-    childPluginKey: PluginNodeKey,
-    node: PluginNodeSingleton,
-  ) => {
-    messagePort: MessagePort;
-    unregister: () => void;
-  };
+  setStatus: (status: PluginStatus) => void;
   setFunctionalities: (
     functionalities: Record<PluginFunctionalityKey, PluginFunctionality>,
   ) => void;

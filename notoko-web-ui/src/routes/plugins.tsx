@@ -16,7 +16,7 @@ import { type TabEntry, Tabs } from "~/components/ui/rudimentary";
 import { Jsfe } from "~/components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
-import type { PluginNode, RootPluginNodeId } from "~/definitions";
+import type { Plugin, PluginId } from "~/definitions";
 
 export default (() => {
   const TAB_NAMES = [
@@ -55,18 +55,18 @@ export default (() => {
   );
 }) satisfies Component<{}>;
 
-const getRootPluginNodeIds = query(async () => {
+const gePluginIds = query(async () => {
   "use server";
 
   const { getPluginManagerSingleton } = await import("~/server/plugin-manager");
   const pluginManagerSingleton = getPluginManagerSingleton();
 
-  return pluginManagerSingleton.$rootPluginNodeIds();
-}, "getRootPluginNodeIds");
-const getRootPluginInfo = query(
+  return pluginManagerSingleton.$pluginIds();
+}, "gePluginIds");
+const getPluginInfo = query(
   async (
-    pluginNodeId: string,
-  ): Promise<PluginNode["info"] | "not_found"> => {
+    pluginId: string,
+  ): Promise<Plugin["info"] | "not_found"> => {
     "use server";
 
     const { getPluginManagerSingleton } = await import(
@@ -74,19 +74,18 @@ const getRootPluginInfo = query(
     );
     const pluginManagerSingleton = getPluginManagerSingleton();
 
-    const accessor = pluginManagerSingleton
-      .getInfoAccessor(pluginNodeId as any, []);
+    const accessor = pluginManagerSingleton.getInfoAccessor(pluginId as any);
 
     return accessor() ?? "not_found";
   },
-  "getRootPluginInfo",
+  "getPluginInfo",
 );
 
 const PluginTabContent: Component = (props) => {
-  const $rootPluginNodeIds = createAsync(() => getRootPluginNodeIds());
+  const $PluginIds = createAsync(() => gePluginIds());
 
-  const [selectedRootPluginNodeId, setSelectedRootPluginNodeId] = //
-    createSignal<RootPluginNodeId | null>(null);
+  const [selectedPluginId, setSelectedPluginId] = //
+    createSignal<PluginId | null>(null);
 
   return (
     <>
@@ -95,29 +94,24 @@ const PluginTabContent: Component = (props) => {
         <nav class="w-76">
           <div class="mx-2 overflow-y-scroll bg-base-100 rounded-box">
             <ul class="menu w-full">
-              <For each={$rootPluginNodeIds()}>
-                {(pluginNodeId) => {
-                  const $info = //
-                    createAsync(() => getRootPluginInfo(pluginNodeId));
+              <For each={$PluginIds()}>
+                {(pluginId) => {
+                  const $info = createAsync(() => getPluginInfo(pluginId));
 
                   return (
                     <li
                       class={cls(
-                        selectedRootPluginNodeId() === pluginNodeId &&
-                          "menu-active",
+                        selectedPluginId() === pluginId && "menu-active",
                       )}
                     >
-                      <button
-                        onClick={() =>
-                          setSelectedRootPluginNodeId(pluginNodeId)}
-                      >
+                      <button onClick={() => setSelectedPluginId(pluginId)}>
                         <Show
                           when={(() => {
                             const info = $info();
                             if (typeof info === "string") return null;
                             return info;
                           })()}
-                          fallback={<code>{pluginNodeId}</code>}
+                          fallback={<code>{pluginId}</code>}
                         >
                           {($info) => $info().shownName}
                         </Show>
@@ -130,10 +124,10 @@ const PluginTabContent: Component = (props) => {
           </div>
         </nav>
         <main class="prose container mx-auto">
-          <Show when={selectedRootPluginNodeId()}>
-            {(rootPluginNodeId) => (
+          <Show when={selectedPluginId()}>
+            {(pluginId) => (
               <PluginTabContentMainContent
-                rootPluginNodeId={rootPluginNodeId()}
+                pluginId={pluginId()}
               />
             )}
           </Show>
@@ -144,12 +138,12 @@ const PluginTabContent: Component = (props) => {
 };
 
 const PluginTabContentMainContent: Component<{
-  rootPluginNodeId: RootPluginNodeId;
+  pluginId: PluginId;
 }> = (props) => {
   const $prefersDark = usePrefersDark();
 
-  const $info = createAsync<PluginNode["info"] | "not_found" | "loading">(
-    () => getRootPluginInfo(props.rootPluginNodeId),
+  const $info = createAsync<Plugin["info"] | "not_found" | "loading">(
+    () => getPluginInfo(props.pluginId),
     { initialValue: "loading" },
   );
   const $jsonSchema = createMemo(() => {

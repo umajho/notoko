@@ -1,12 +1,12 @@
 import * as z from "zod/v4";
 
-import { type PluginNode, RootPluginNodeId } from "~/definitions";
+import { type Plugin, PluginId } from "~/definitions";
 
 import { basicPlugin } from "./builtin-plugins/basic.mod";
 import { prototypingJsonApiConnectorPlugin } from "./builtin-plugins/prototyping";
 
-export const builtinPlugins: Record<RootPluginNodeId, PluginNode> = {
-  [RootPluginNodeId.parse("builtin.basic")]: basicPlugin,
-  [RootPluginNodeId.parse("builtin.prototyping.json_api_connector")]:
+export const builtinPlugins: Record<PluginId, Plugin> = {
+  [PluginId.parse("builtin.basic")]: basicPlugin,
+  [PluginId.parse("builtin.prototyping.json_api_connector")]:
     prototypingJsonApiConnectorPlugin,
 };
