@@ -571,7 +571,7 @@ function makeUtils() {
      */
     fsPinyinToSvXsampa(initialOrFinal) {
       // deno-fmt-ignore
-      const dict = {"b":"p","c":"tsh","ch":"ts`h","d":"t","f":"f","g":"k","h":"x","j":"ts\\","k":"kh","l":"l","m":"m","n":"n","p":"ph","q":"ts\\h","r":"z`","s":"s","sh":"s`","t":"th","w":"w","x":"s\\","y":"j","z":"ts","zh":"ts`","a":"a","ai":"a :\\i","an":"a :n","ang":"A N","ao":"AU","e":"7","ei":"e :\\i","en":"@ :n","eng":"@ N","er":"a r\\`","i":"i","ia":"ia","ian":"iE :n","iang":"iA N","iao":"iAU","ie":"ie","ii":"i\\","iii":"i`","in":"i :n","ing":"i N","iong":"iU N","iou":"i@U","o":"o","ong":"U N","ou":"@U","u":"u","ua":"ua","uai":"ua :\\i","uan":"ua :n","uang":"uA N","uei":"ue :\\i","uen":"u@ :n","uo":"uo","v":"y","van":"y{ :n","ve":"yE","vn":"yE :n"}
+      const dict = {"b":"p","c":"tsh","ch":"ts`h","d":"t","f":"f","g":"k","h":"x","j":"ts\\","k":"kh","l":"l","m":"m","n":"n","p":"ph","q":"ts\\h","r":"z`","s":"s","sh":"s`","t":"th","w":"w","x":"s\\","y":"j","z":"ts","zh":"ts`","a":"a","ai":"a :\\i","an":"a :n","ang":"A N","ao":"AU","e":"7","ei":"e :\\i","en":"@ :n","eng":"@ N","er":"a r\\`","i":"i","ia":"ia","ian":"iE :n","iang":"iA N","iao":"iAU","ie":"ie","ii":"i\\","iii":"i`","in":"i :n","ing":"i N","iong":"iU N","iou":"i@U","o":"o","ong":"U N","ou":"@U","u":"u","ua":"ua","uai":"ua :\\i","uan":"ua :n","uang":"uA N","uei":"ue :\\i","uen":"u@ :n","uo":"uo","v":"y","van":"y{ :n","ve":"yE","vn":"yE :n","rr":"r\\`"}
       return dict[initialOrFinal];
     },
     /**
