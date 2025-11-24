@@ -351,8 +351,16 @@ function makeFunctionality() {
             if (opts.inputData.defaultLanguage) {
               note.setLanguageOverride(opts.inputData.defaultLanguage);
             }
-            // deno-fmt-ignore ES5 gore
-            note.setPhonemes(("fsPinyin" in phoneme) ? Utils.fsPinyinToSvXsampa(phoneme.fsPinyin) : "sil");
+            note.setPhonemes((function () {
+              if (!("fsPinyin" in phoneme)) return "sil";
+              if (segment.text === "嗯" && phoneme.fsPinyin === "en") {
+                return ":n";
+              } else if (segment.text !== "二" && phoneme.fsPinyin === "er") {
+                return "@ r\\`";
+              }
+              return Utils.fsPinyinToSvXsampa(phoneme.fsPinyin);
+            })());
+
             note.setLyrics(j === 0 ? segment.text : "~");
 
             group.addNote(note);
