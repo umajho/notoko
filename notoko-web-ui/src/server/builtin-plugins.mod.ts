@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-import { type Plugin, PluginId } from "~/definitions";
+import { type Plugin, PluginId } from "~/definitions.mod";
 
 import { basicPlugin } from "./builtin-plugins/basic.mod";
 import { prototypingJsonApiConnectorPlugin } from "./builtin-plugins/prototyping";

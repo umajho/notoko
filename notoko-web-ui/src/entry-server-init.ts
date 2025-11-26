@@ -1,9 +1,9 @@
 import FSP from "fs/promises";
 
-import { FOLDER_PATHS_SHOULD_BE_CREATED } from "~/definitions";
+import { FOLDER_PATHS_SHOULD_BE_CREATED } from "~/definitions.mod";
 
 import { builtinPlugins } from "./server/builtin-plugins.mod";
-import { getPluginManagerSingleton } from "./server/plugin-manager";
+import { getPluginManagerSingleton } from "./server/plugin-manager.mod";
 
 async function init() {
   for (const path of FOLDER_PATHS_SHOULD_BE_CREATED) {

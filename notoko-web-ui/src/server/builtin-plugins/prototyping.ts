@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-import { type Plugin } from "~/definitions";
+import { type Plugin } from "~/definitions.mod";
 
 const StaticConfiguration = z.object({
   entrypointUrl: z.url(),
@@ -16,11 +16,17 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
       "json_schema",
       z.toJSONSchema(StaticConfiguration),
     ],
+
+    associatedType: "plugin:singleton",
+    defaultStaticConfiguration: {
+      entrypointUrl: "http://localhost:11111/",
+    },
   },
   initialStatus: "loading",
   entry: (ctx) => {
-  },
-  defaultStaticConfiguration: {
-    entrypointUrl: "http://localhost:11111/",
+    ctx.onChangeStaticConfiguration = (cfg) => {
+      console.log(cfg);
+      ctx.setStatus("ready");
+    };
   },
 };

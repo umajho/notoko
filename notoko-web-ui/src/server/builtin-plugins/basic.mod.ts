@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 
-import { type Plugin, PluginFunctionalityKey } from "~/definitions";
+import { type Plugin, PluginInstanceFunctionalityKey } from "~/definitions.mod";
 
 import * as langCmn from "./basic/lang-cmn";
 
@@ -15,19 +15,25 @@ export const basicPlugin: Plugin = {
       "json_schema",
       z.toJSONSchema(StaticConfiguration),
     ],
+
+    associatedType: "plugin:singleton",
+    defaultStaticConfiguration: {},
   },
   initialStatus: "ready",
   entry: (ctx) => {
     ctx.setFunctionalities({
-      [PluginFunctionalityKey.parse("cmn.phonemizer")]: {
-        type: "plugin_functionality:phonemizer",
-        supportedInputLanguages: langCmn.phonemizerSupportedInputLanguages,
-        supportedOutputSegmentationFormats:
-          langCmn.phonemizerSupportedOutputSegmentationFormats,
+      [PluginInstanceFunctionalityKey.parse("cmn.phonemizer")]: {
+        type: "functionality:phonemizer",
+        info: {
+          shownName: "Builtin Mandarin",
+          associatedType: "functionality:phonemizer",
+          supportedInputLanguages: langCmn.phonemizerSupportedInputLanguages,
+          supportedOutputSegmentationFormats:
+            langCmn.phonemizerSupportedOutputSegmentationFormats,
+        },
         phonemize: langCmn.phonemize,
         isValidPhoneme: langCmn.isValidPhoneme,
       },
     });
   },
-  defaultStaticConfiguration: {},
 };

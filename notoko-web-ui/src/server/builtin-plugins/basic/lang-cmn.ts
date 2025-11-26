@@ -11,7 +11,7 @@ import type {
   LanguageSpecifier,
   PhonemeSegment,
   PhonemizeResult,
-} from "~/definitions";
+} from "~/definitions.mod";
 
 addDict(CompleteDict);
 

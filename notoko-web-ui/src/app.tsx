@@ -25,11 +25,11 @@ export default function App() {
 
   return (
     <Router
-      root={(props) => (
+      root={($props) => (
         <MetaProvider>
           <div class={cls("contents", $prefersDark() && "sl-theme-dark")}>
             <Nav />
-            <Suspense>{props.children}</Suspense>
+            <Suspense>{$props.children}</Suspense>
           </div>
         </MetaProvider>
       )}
