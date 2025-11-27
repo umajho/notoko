@@ -56,14 +56,95 @@ function getTranslations(langCode) {
         "The input data's schema is not supported:",
         "不支持输入数据的 schema：",
       ],
-      ["Supported schemata:", "支持的 schema："],
+      ["Supported schemata (in regex):", "支持的 schema（以正则表达式表示）："],
+      ["Unsupported schema major version:", "不支持的 schema 主版本："],
+      ["Supported major version:", "支持的主版本："],
     ];
   }
   return [];
 }
 
-const SUPPORTED_SCHEMA =
-  "https://raw.githubusercontent.com/umajho/notoko/main/schemata/notoko-prosody-data.v1.json";
+/**
+ * @returns {boolean} should the process continue or not.
+ */
+function checkVersion(inputData) {
+  const SCHEMA_MAJOR_REGEX =
+    /^https:\/\/raw\.githubusercontent\.com\/umajho\/notoko\/main\/schemata\/notoko-prosody-data\.v(\d+)\.json$/;
+  const SCHEMA_PERMANENT_REGEX =
+    /^https:\/\/raw\.githubusercontent\.com\/umajho\/notoko\/main\/schemata\/permanent\/notoko-prosody-data\/v(\d+)\/notoko-prosody-data\.v\1_(\d+)_(\d+)\.json$/;
+
+  function makeSupportedSchemataLines() {
+    return [
+      SV.T("Supported schemata (in regex):"),
+      "- " + SCHEMA_MAJOR_REGEX.source,
+      "- " + SCHEMA_PERMANENT_REGEX.source,
+    ].join("\n");
+  }
+
+  if (!("$schema" in inputData)) {
+    const lines = [
+      SV.T("The field `$schema` is missing in the input data."),
+      makeSupportedSchemataLines(),
+    ];
+    API.showError(SV.T("Bad Input Data"), lines.join("\n"));
+    return false;
+  }
+
+  const v = (function () {
+    const gMajor = SCHEMA_MAJOR_REGEX.exec(inputData["$schema"]);
+    if (gMajor) return [parseInt(gMajor[1]), null, null];
+
+    const gP = SCHEMA_PERMANENT_REGEX.exec(inputData["$schema"]);
+    if (gP) return [parseInt(gP[1]), parseInt(gP[2]), parseInt(gP[3])];
+    return null;
+  })();
+
+  if (v === null) {
+    const lines = [
+      SV.T("The input data's schema is not supported:") + " `" +
+      inputData["$schema"] + "`.",
+      makeSupportedSchemataLines(),
+    ];
+    API.showError(SV.T("Bad Input Data"), lines.join("\n"));
+    return false;
+  }
+  var vMajor = v[0];
+  var vMinor = v[1];
+  var vPatch = v[2];
+
+  function makeSchemaVersionMessage(prefix, part, goodChoices, badValue) {
+    const lines = [
+      SV.T("Unsupported schema " + part + " version:") + " `" + prefix +
+      badValue + "`.",
+      SV.T("Supported " + part + " versions:"),
+    ];
+    for (var i = 0; i < goodChoices.length; i++) {
+      lines.push("- " + prefix + goodChoices[i]);
+    }
+    return lines.join("\n");
+  }
+
+  if (vMajor === 1) {
+    if (vMinor === 0) {
+      if (vPatch === 0) {
+        // ok
+      } else if (vPatch !== null) {
+        const msg = makeSchemaVersionMessage("1.0.", "patch", [0], vPatch);
+        API.showError(SV.T("Bad Input Data"), msg);
+        return false;
+      }
+    } else if (vMinor !== null) {
+      const msg = makeSchemaVersionMessage("1.", "minor", [0], vMinor);
+      API.showError(SV.T("Bad Input Data"), msg);
+      return false;
+    }
+  } else {
+    const msg = makeSchemaVersionMessage("", "major", [1], vMajor);
+    API.showError(SV.T("Bad Input Data"), msg);
+    return false;
+  }
+  return true;
+}
 
 const Utils = makeUtils();
 const API = makeApi();
@@ -172,23 +253,7 @@ function getSidePanelSectionState() {
       API.showError(SV.T("Bad Input Data"), lines.join("\n"));
       return;
     }
-    if (!("$schema" in inputData)) {
-      const lines = [
-        SV.T("The field `$schema` is missing in the input data."),
-        SV.T("Supported schemata:"),
-        "- " + SUPPORTED_SCHEMA,
-      ];
-      API.showError(SV.T("Bad Input Data"), lines.join("\n"));
-      return;
-    }
-    if (inputData["$schema"] !== SUPPORTED_SCHEMA) {
-      const lines = [
-        SV.T("The input data's schema is not supported:") + " `" +
-        inputData["$schema"] + "`.",
-        SV.T("Supported schemata:"),
-        "- " + SUPPORTED_SCHEMA,
-      ];
-      API.showError(SV.T("Bad Input Data"), lines.join("\n"));
+    if (!checkVersion(inputData)) {
       return;
     }
     Functionality.createNoteGroupOnSV({
