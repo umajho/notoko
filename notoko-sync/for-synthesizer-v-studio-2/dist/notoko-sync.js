@@ -126,7 +126,7 @@ function checkVersion(inputData) {
 
   if (vMajor === 1) {
     if (vMinor === 0) {
-      if (vPatch === 0) {
+      if (vPatch >= 0 && vPatch <= 1) {
         // ok
       } else if (vPatch !== null) {
         const msg = makeSchemaVersionMessage("1.0.", "patch", [0], vPatch);

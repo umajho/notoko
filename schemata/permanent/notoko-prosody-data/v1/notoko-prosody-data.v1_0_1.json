@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "$schema",
+    "defaultLanguage",
+    "inputText",
+    "ticksPerSecond",
+    "segments",
+    "actualPitches"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "enum": [
+        "https://raw.githubusercontent.com/umajho/notoko/main/schemata/notoko-prosody-data.v1.json",
+        "https://raw.githubusercontent.com/umajho/notoko/main/schemata/permanent/notoko-prosody-data/v1/notoko-prosody-data.v1_0_1.json"
+      ]
+    },
+    "defaultLanguage": { "enum": ["english", "mandarin"] },
+    "inputText": { "type": "string" },
+    "ticksPerSecond": { "type": "integer", "minimum": 1 },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "phonemes"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string" },
+          "phonemes": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["rawText", "durationTicks"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "rawText": { "type": "string" },
+                    "durationTicks": { "type": "integer", "minimum": 0 },
+                    "fsPinyin": { "$ref": "#/$defs/fsPinyin" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": ["type"],
+                  "additionalProperties": true,
+                  "properties": {
+                    "type": { "type": "string", "const": "space" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "actualPitches": {
+      "type": "object",
+      "required": ["ticksPerPoint", "pointsPackedV1"],
+      "additionalProperties": false,
+      "properties": {
+        "ticksPerPoint": { "type": "integer", "minimum": 1 },
+        "pointsPackedV1": { "type": "string", "contentEncoding": "base64" }
+      }
+    }
+  },
+  "$defs": {
+    "fsPinyin": {
+      "type": "string",
+      "enum": [
+        "b",
+        "c",
+        "ch",
+        "d",
+        "f",
+        "g",
+        "h",
+        "j",
+        "k",
+        "l",
+        "m",
+        "n",
+        "p",
+        "q",
+        "r",
+        "rr",
+        "s",
+        "sh",
+        "t",
+        "w",
+        "x",
+        "y",
+        "z",
+        "zh",
+        "a",
+        "ai",
+        "an",
+        "ang",
+        "ao",
+        "e",
+        "ei",
+        "en",
+        "eng",
+        "er",
+        "i",
+        "ia",
+        "ian",
+        "iang",
+        "iao",
+        "ie",
+        "ii",
+        "iii",
+        "in",
+        "ing",
+        "iong",
+        "iou",
+        "o",
+        "ong",
+        "ou",
+        "u",
+        "ua",
+        "uai",
+        "uan",
+        "uang",
+        "uei",
+        "uen",
+        "uo",
+        "v",
+        "van",
+        "ve",
+        "vn"
+      ]
+    }
+  }
+}
