@@ -5,13 +5,15 @@ import { createStore } from "solid-js/store";
 
 import {
   type Functionality,
-  FunctionalityFQN,
+  FunctionalityFqn,
+  makePluginInstanceFqn,
   type Plugin,
   PluginId,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   type PluginStatus,
 } from "~/definitions.mod";
+import { urlEncodeToSafePathSegment } from "~/utils/path-segment-url-encoding";
 
 /**
  * NOTE: `*TreeNode` and `*Tree` are historical names for the tree-based plugin
@@ -78,14 +80,14 @@ export function createRuntimeData() {
     instanceKey: PluginInstanceKey,
     status: PluginStatus,
   ) {
-    const prefix = makePrefix(pluginId, instanceKey);
+    const prefix = makePluginInstanceFqn(pluginId, instanceKey);
     set$instanceStatusMap((old) => ({ ...old, [prefix]: status }));
   }
   function getStatusAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
   ): Accessor<PluginStatus | "unknown"> {
-    const prefix = makePrefix(pluginId, instanceKey);
+    const prefix = makePluginInstanceFqn(pluginId, instanceKey);
     return createMemo(() => {
       const map = $instanceStatusMap();
       return map[prefix] ?? "unknown";
@@ -108,10 +110,6 @@ export function createRuntimeData() {
     (fs) => _.pickBy(fs, (x) => x.type === "functionality:prosody_generator"),
   ));
 
-  function makePrefix(pluginId: PluginId, instanceKey: PluginInstanceKey) {
-    return pluginId + "\0" + instanceKey + "\0";
-  }
-
   function set$functionalitiesFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
@@ -121,11 +119,12 @@ export function createRuntimeData() {
     >,
   ) {
     set$functionalities((old) => {
-      const prefix = makePrefix(pluginId, instanceKey);
+      const prefix = makePluginInstanceFqn(pluginId, instanceKey);
       const entries = Object.entries(old)
         .filter(([key, _]) => !key.startsWith(prefix));
       for (const [newKey, newF] of Object.entries(functionalities)) {
-        const newAbsolutePath = prefix + newKey;
+        const newAbsolutePath = //
+          `${prefix}[${urlEncodeToSafePathSegment(newKey)}]`;
         entries.push([newAbsolutePath, newF]);
       }
       return Object.fromEntries(entries);
@@ -134,28 +133,34 @@ export function createRuntimeData() {
   function getFunctionalitiesAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<[FunctionalityFQN, Functionality][]> {
-    const prefix = makePrefix(pluginId, instanceKey);
+  ): Accessor<[FunctionalityFqn, Functionality][]> {
+    const prefix = makePluginInstanceFqn(pluginId, instanceKey);
     return createMemo(on(
       $functionalities,
       (fs) => {
         // no idea why the return type of `_.pickBy` become
         // `Record<……, …… | undefined>`.
         fs = _.pickBy(fs, (_, key) => key.startsWith(prefix)) as //
-        Record<FunctionalityFQN, Functionality>;
-        return Object.entries(fs) as [FunctionalityFQN, Functionality][];
+        Record<FunctionalityFqn, Functionality>;
+        return Object.entries(fs) as [FunctionalityFqn, Functionality][];
       },
     ));
   }
   function getFunctionalityInfosAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<
-    [FunctionalityFQN, Functionality["info"]][]
-  > {
+  ): Accessor<[FunctionalityFqn, Functionality["info"]][]> {
     return createMemo(() => {
       const f = getFunctionalitiesAccessorFor(pluginId, instanceKey);
       return f().map(([p, f]) => [p, f.info]);
+    });
+  }
+  function getFunctionalityAccessorFor(
+    fqn: FunctionalityFqn,
+  ): Accessor<Functionality | null> {
+    return createMemo(() => {
+      const fs = $functionalities();
+      return fs[fqn] ?? null;
     });
   }
 
@@ -168,6 +173,7 @@ export function createRuntimeData() {
     set$statusFor,
     getStatusAccessorFor,
     set$functionalitiesFor,
+    getFunctionalityAccessorFor,
     getFunctionalityInfosAccessorFor,
     $functionalities,
     $phonemizers,

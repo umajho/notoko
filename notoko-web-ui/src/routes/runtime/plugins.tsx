@@ -1,4 +1,12 @@
-import { type Component, For, Match, Show, Switch } from "solid-js";
+import {
+  type Component,
+  createMemo,
+  For,
+  type JSX,
+  Match,
+  Show,
+  Switch,
+} from "solid-js";
 import {
   A,
   createAsync,
@@ -9,9 +17,11 @@ import { VsError, VsLoading, VsUnverified } from "solid-icons/vs";
 
 import { cls } from "~/utils/cls";
 import {
+  extractPluginInstanceFunctionalityKeyFromFqn,
   type Functionality,
-  FunctionalityFQN,
+  FunctionalityFqn,
   PluginId,
+  PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   type PluginStatus,
   SINGLETON_PLUGIN_INSTANCE_KEY,
@@ -27,8 +37,10 @@ import {
 import {
   urlDecodeFromSafePathSegment,
   UrlEncodedSafePathSegment,
+  urlEncodeToSafePathSegment,
 } from "~/utils/path-segment-url-encoding";
 import { LoadingSpan } from "~/components/ui/rudimentary";
+import { getFunctionalityTypeDisplayName } from "~/components/tab-runtime/FunctionalityDemonstrator";
 
 export function useRuntimePagePluginsTabParams() {
   const params = useParams();
@@ -42,18 +54,32 @@ export function useRuntimePagePluginsTabParams() {
         ),
       )
       : null;
+  const $selectedPluginInstanceFunctionalityKey = () =>
+    params.pluginInstanceFunctionalityKeyEncoded
+      ? PluginInstanceFunctionalityKey.parse(
+        urlDecodeFromSafePathSegment(
+          UrlEncodedSafePathSegment.parse(
+            params.pluginInstanceFunctionalityKeyEncoded,
+          ),
+        ),
+      )
+      : null;
 
-  return { $selectedPluginId, $selectedPluginInstanceKey };
+  return {
+    $selectedPluginId,
+    $selectedPluginInstanceKey,
+    $selectedPluginInstanceFunctionalityKey,
+  };
 }
 
-export default function Layout(p$rops: RouteSectionProps) {
+export default function Layout($props: RouteSectionProps) {
   return (
     <>
-      <div class="flex">
+      <div class="flex overflow-y-auto">
         <nav class="w-76">
           <Sidebar />
         </nav>
-        {p$rops.children}
+        {$props.children}
       </div>
     </>
   );
@@ -63,6 +89,7 @@ const Sidebar: Component<{}> = () => {
   const {
     $selectedPluginId,
     $selectedPluginInstanceKey,
+    $selectedPluginInstanceFunctionalityKey,
   } = useRuntimePagePluginsTabParams();
 
   const $PluginIds = createAsync(() => gePluginIds());
@@ -72,10 +99,11 @@ const Sidebar: Component<{}> = () => {
       <ul class="menu w-full">
         <For each={$PluginIds()}>
           {(pluginId) => (
-            <Item
+            <PluginItem
               pluginId={pluginId}
               selectedPluginId={$selectedPluginId()}
               selectedPluginInstanceKey={$selectedPluginInstanceKey()}
+              selectedPluginInstanceFunctionalityKey={$selectedPluginInstanceFunctionalityKey()}
             />
           )}
         </For>
@@ -84,10 +112,11 @@ const Sidebar: Component<{}> = () => {
   );
 };
 
-const Item: Component<{
+const PluginItem: Component<{
   pluginId: PluginId;
   selectedPluginId: PluginId | null;
   selectedPluginInstanceKey: null | PluginInstanceKey;
+  selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
 }> = ($props) => {
   const $info = createAsync(() => getPluginInfo($props.pluginId));
   const $instanceKeys = createAsync<null | PluginInstanceKey[] | "loading">(
@@ -96,102 +125,140 @@ const Item: Component<{
   );
 
   const $isActive = () => $props.selectedPluginId === $props.pluginId;
-  const $isSingleton = () => $instanceKeys() === null;
 
-  const ItemContent: Component<{
-    instanceKey: PluginInstanceKey;
-  }> = ($props2) => {
-    const status = createAsync<PluginStatus | "unknown">(
-      () => getPluginInstanceStatus($props.pluginId, $props2.instanceKey),
-      { initialValue: "unknown" },
-    );
-
-    return (
-      <Show
-        when={stringToNull($info())}
-        fallback={<code>{$props.pluginId}</code>}
-      >
-        {($info) => (
-          <>
-            <Switch>
-              <Match when={status() === "unknown"}>
-                <VsUnverified />
-              </Match>
-              <Match when={status() === "loading"}>
-                <VsLoading class="animate-spin" />
-              </Match>
-              <Match when={status() === "error"}>
-                <VsError class="text-error" />
-              </Match>
-            </Switch>
-            {$info().shownName}
-          </>
+  return (
+    <Switch>
+      <Match when={$instanceKeys() === "loading"}>
+        <LoadingSpan class="mx-auto" flavor="dots" />
+      </Match>
+      <Match when={stringToNull($instanceKeys())}>
+        {($instanceKeys) => (
+          <InstanceItems
+            pluginId={$props.pluginId}
+            isPluginActive={$isActive()}
+            selectedPluginInstanceKey={$props.selectedPluginInstanceKey}
+            selectedPluginInstanceFunctionalityKey={$props
+              .selectedPluginInstanceFunctionalityKey}
+            instanceKeys={$instanceKeys()}
+          />
         )}
-      </Show>
-    );
-  };
+      </Match>
+      <Match when={true}>
+        <InstanceItem
+          pluginId={$props.pluginId}
+          isPluginActive={$isActive()}
+          pluginInstanceKey={SINGLETON_PLUGIN_INSTANCE_KEY}
+          selectedPluginInstanceKey={$props.selectedPluginInstanceKey}
+          selectedPluginInstanceFunctionalityKey={$props
+            .selectedPluginInstanceFunctionalityKey}
+        >
+          <InstanceItemContent
+            pluginId={$props.pluginId}
+            shownName={stringToNull($info())?.shownName ?? $props.pluginId}
+            instanceKey={SINGLETON_PLUGIN_INSTANCE_KEY}
+          />
+        </InstanceItem>
+      </Match>
+    </Switch>
+  );
+};
+
+const InstanceItems: Component<{
+  pluginId: PluginId;
+  isPluginActive: boolean;
+  selectedPluginInstanceKey: PluginInstanceKey | null;
+  selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
+  instanceKeys: PluginInstanceKey[];
+}> = ($props) => {
+  return (
+    <>
+      {/* <div class="menu-title">Instances</div> */}
+      <ul>
+        <For each={$props.instanceKeys}>
+          {(instanceKey) => (
+            <li>
+              <button>TODO</button>
+            </li>
+          )}
+        </For>
+        <li>
+          <button>TODO: +</button>
+        </li>
+      </ul>
+    </>
+  );
+};
+
+const InstanceItemContent: Component<{
+  pluginId: PluginId;
+  shownName: string;
+  instanceKey: PluginInstanceKey;
+}> = ($props) => {
+  const $status = createAsync<PluginStatus | "unknown">(
+    () => getPluginInstanceStatus($props.pluginId, $props.instanceKey),
+    { initialValue: "unknown" },
+  );
+
+  return (
+    <>
+      <Switch>
+        <Match when={$status() === "unknown"}>
+          <VsUnverified />
+        </Match>
+        <Match when={$status() === "loading"}>
+          <VsLoading class="animate-spin" />
+        </Match>
+        <Match when={$status() === "error"}>
+          <VsError class="text-error" />
+        </Match>
+      </Switch>
+      {$props.shownName}
+    </>
+  );
+};
+
+const InstanceItem: Component<{
+  children: JSX.Element;
+  pluginId: PluginId;
+  isPluginActive: boolean;
+  pluginInstanceKey: PluginInstanceKey;
+  selectedPluginInstanceKey: PluginInstanceKey | null;
+  selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
+}> = ($props) => {
+  const $isActive = () =>
+    $props.isPluginActive &&
+    $props.selectedPluginInstanceKey === $props.pluginInstanceKey;
+  const $encodedInstanceKey = () =>
+    urlEncodeToSafePathSegment($props.pluginInstanceKey);
 
   return (
     <li>
-      <Show
-        when={$isSingleton()}
-        fallback={
-          <button class={cls("menu-disabled", $isActive() && "menu-active")}>
-            <ItemContent instanceKey={SINGLETON_PLUGIN_INSTANCE_KEY} />
-          </button>
-        }
+      <A
+        class={cls($isActive() && "menu-active")}
+        href={`/runtime/plugins/${$props.pluginId}/instances/${$encodedInstanceKey()}`}
       >
-        <A
-          class={cls($isActive() && "menu-active")}
-          href={`/runtime/plugins/${$props.pluginId}/instances/${SINGLETON_PLUGIN_INSTANCE_KEY}`}
-        >
-          <ItemContent instanceKey={SINGLETON_PLUGIN_INSTANCE_KEY} />
-        </A>
-      </Show>
-
-      <Switch>
-        <Match when={$instanceKeys() === "loading"}>
-          <LoadingSpan class="mx-auto" flavor="dots" />
-        </Match>
-        <Match when={stringToNull($instanceKeys())}>
-          {($instanceKeys) => (
-            <>
-              {/* <div class="menu-title">Instances</div> */}
-              <ul>
-                <For each={$instanceKeys()}>
-                  {(instanceKey) => (
-                    <li>
-                      <button>TODO</button>
-                    </li>
-                  )}
-                </For>
-                <li>
-                  <button>TODO: +</button>
-                </li>
-              </ul>
-            </>
-          )}
-        </Match>
-        <Match when={true}>
-          {/* <div class="menu-title">Functionalities</div> */}
-          <Functionalities
-            pluginId={$props.pluginId}
-            pluginInstanceKey={null}
-          />
-        </Match>
-      </Switch>
+        {$props.children}
+      </A>
+      {/* <div class="menu-title">Functionalities</div> */}
+      <FunctionalityItems
+        pluginId={$props.pluginId}
+        pluginInstanceKey={$props.pluginInstanceKey}
+        isPluginInstanceActive={$isActive()}
+        selectedPluginInstanceFunctionalityKey={$props
+          .selectedPluginInstanceFunctionalityKey}
+      />
     </li>
   );
 };
 
-const Functionalities: Component<
-  {
-    pluginId: PluginId;
-    pluginInstanceKey: null | PluginInstanceKey;
-  }
-> = ($props) => {
+const FunctionalityItems: Component<{
+  pluginId: PluginId;
+  pluginInstanceKey: PluginInstanceKey;
+  isPluginInstanceActive: boolean;
+  selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
+}> = ($props) => {
   const $fs = createAsync<
-    | [FunctionalityFQN, Functionality["info"]][]
+    | [FunctionalityFqn, Functionality["info"]][]
     | "loading"
   >(() =>
     getPluginInstanceFunctionalityInfos(
@@ -208,31 +275,57 @@ const Functionalities: Component<
         {($fs) => (
           <ul>
             <For each={$fs()}>
-              {([absPath, f]) => {
-                const typeName = (() => {
-                  switch (f.associatedType) {
-                    case "functionality:phonemizer":
-                      return "Phonemizer";
-                    case "functionality:duration_predictor":
-                      return "Duration Predictor";
-                    case "functionality:prosody_generator":
-                      return "Prosody Generator";
-                    default:
-                      f satisfies never;
-                      throw new Error("unreachable!");
-                  }
-                })();
-
-                return (
-                  <li class="menu-disabled">
-                    {typeName}: {f.shownName}
-                  </li>
-                );
-              }}
+              {([Fqn, f]) => (
+                <FunctionalityItem
+                  pluginId={$props.pluginId}
+                  pluginInstanceKey={$props.pluginInstanceKey}
+                  isPluginInstanceActive={$props.isPluginInstanceActive}
+                  selectedPluginInstanceFunctionalityKey={$props
+                    .selectedPluginInstanceFunctionalityKey}
+                  functionalityFqn={Fqn}
+                  functionalityInfo={f}
+                />
+              )}
             </For>
           </ul>
         )}
       </Match>
     </Switch>
+  );
+};
+
+const FunctionalityItem: Component<{
+  pluginId: PluginId;
+  pluginInstanceKey: PluginInstanceKey;
+  isPluginInstanceActive: boolean;
+  selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
+  functionalityFqn: FunctionalityFqn;
+  functionalityInfo: Functionality["info"];
+}> = ($props) => {
+  const functionalityKey = createMemo(() =>
+    extractPluginInstanceFunctionalityKeyFromFqn($props.functionalityFqn)
+  );
+  const $encodedInstanceKey = () =>
+    urlEncodeToSafePathSegment($props.pluginInstanceKey);
+  const $encodedFunctionalityKey = () =>
+    urlEncodeToSafePathSegment(functionalityKey());
+
+  const $isActive = () =>
+    $props.isPluginInstanceActive &&
+    functionalityKey() ===
+      $props.selectedPluginInstanceFunctionalityKey;
+
+  const typeName = () =>
+    getFunctionalityTypeDisplayName($props.functionalityInfo.associatedType);
+
+  return (
+    <li>
+      <A
+        class={cls($isActive() && "menu-active")}
+        href={`/runtime/plugins/${$props.pluginId}/instances/${$encodedInstanceKey()}/functionalities/${$encodedFunctionalityKey()}`}
+      >
+        {typeName()}: {$props.functionalityInfo.shownName}
+      </A>
+    </li>
   );
 };

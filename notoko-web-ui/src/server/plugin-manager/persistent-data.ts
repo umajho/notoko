@@ -10,9 +10,9 @@ import {
 
 import {
   DATA_PLUGIN_DATA_PATH,
-  makePluginInstanceFQN,
+  makePluginInstanceFqn,
   PluginId,
-  PluginInstanceFQN,
+  PluginInstanceFqn,
   PluginInstanceKey,
 } from "~/definitions.mod";
 
@@ -29,13 +29,13 @@ interface Entry {
  * that have not been registered).
  */
 export class PersistentDataManager {
-  instances: Record<PluginInstanceFQN, Entry> = {};
+  instances: Record<PluginInstanceFqn, Entry> = {};
 
   static #initializeInstance(
-    fqn: PluginInstanceFQN,
+    Fqn: PluginInstanceFqn,
     opts: { defaultStaticConfiguration: object },
   ): Entry {
-    const path = PersistentDataManager.#getStaticConfigurationFilePath(fqn);
+    const path = PersistentDataManager.#getStaticConfigurationFilePath(Fqn);
 
     let staticConfiguration: object | null = null;
     try {
@@ -84,24 +84,24 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
     opts: { defaultStaticConfiguration: object },
   ) {
-    const fqn = makePluginInstanceFQN(pluginId, instanceKey);
-    if (fqn in this.instances) {
+    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    if (Fqn in this.instances) {
       throw new Error("TODO: handle duplicate initialization.");
     }
-    this.instances[fqn] = PersistentDataManager.#initializeInstance(fqn, opts);
+    this.instances[Fqn] = PersistentDataManager.#initializeInstance(Fqn, opts);
   }
 
   /**
    * Note that the accessor is bound to the specific plugin instance. If the
-   * instance is unregistered and another instance with the same FQN is
+   * instance is unregistered and another instance with the same Fqn is
    * registered later, the accessor will still point to the old instance.
    */
   getInstanceStaticConfigurationAccessor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
   ): Accessor<object> {
-    const fqn = makePluginInstanceFQN(pluginId, instanceKey);
-    const entry = this.instances[fqn]!;
+    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.instances[Fqn]!;
     return entry.$staticConfiguration;
   }
 
@@ -110,8 +110,8 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
     cb: (config: object) => void,
   ): { remove: () => void } {
-    const fqn = makePluginInstanceFQN(pluginId, instanceKey);
-    const entry = this.instances[fqn]!;
+    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.instances[Fqn]!;
     return entry.addStaticConfigurationChangeHandler(cb);
   }
 
@@ -120,14 +120,14 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
     value: object,
   ) {
-    const fqn = makePluginInstanceFQN(pluginId, instanceKey);
-    const entry = this.instances[fqn]!;
+    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.instances[Fqn]!;
     entry.set$staticConfiguration(value);
   }
 
   static #getStaticConfigurationFilePath(
-    fqn: PluginInstanceFQN,
+    Fqn: PluginInstanceFqn,
   ): string {
-    return `${DATA_PLUGIN_DATA_PATH}/${fqn}.static-configuration.json`;
+    return `${DATA_PLUGIN_DATA_PATH}/${Fqn}.static-configuration.json`;
   }
 }

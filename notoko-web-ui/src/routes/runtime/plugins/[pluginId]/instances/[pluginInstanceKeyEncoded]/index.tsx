@@ -1,5 +1,6 @@
 import {
   type Component,
+  createEffect,
   createMemo,
   createSignal,
   Match,
@@ -10,10 +11,11 @@ import { createAsync, useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { Title } from "@solidjs/meta";
 
-import { Jsfe } from "~/components/Jsfe";
+import { Jsfe } from "~/components/web-components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
 import {
+  makePluginInstanceFqn,
   type Plugin,
   PluginId,
   PluginInstanceKey,
@@ -32,19 +34,21 @@ import { LoadingSpan } from "~/components/ui/rudimentary";
 export default (() => {
   const {
     $selectedPluginId,
-    $selectedPluginInstanceKey: $selectedPluginInstanceId,
+    $selectedPluginInstanceKey,
   } = useRuntimePagePluginsTabParams();
 
   return (
     <>
-      <Title>{makeTitle("Plugin: …")}</Title>
+      <Title>{makeTitle("Plugin Instance: …")}</Title>
 
       <main class="prose container mx-auto">
-        <Show when={$selectedPluginId()}>
-          {(pluginId) => (
+        <Show
+          when={bothNonNull($selectedPluginId(), $selectedPluginInstanceKey())}
+        >
+          {(both) => (
             <MainContent
-              pluginId={pluginId()}
-              pluginInstanceId={$selectedPluginInstanceId()}
+              pluginId={both()[0]}
+              pluginInstanceKey={both()[1]}
             />
           )}
         </Show>
@@ -55,7 +59,7 @@ export default (() => {
 
 const MainContent: Component<{
   pluginId: PluginId;
-  pluginInstanceId: null | PluginInstanceKey;
+  pluginInstanceKey: PluginInstanceKey;
 }> = ($props) => {
   const $info = createAsync<Plugin["info"] | "not_found" | "loading">(
     () => getPluginInfo($props.pluginId),
@@ -72,7 +76,11 @@ const MainContent: Component<{
       </Match>
       <Match when={stringToNull($info())}>
         {($info) => (
-          <MainContentReady pluginId={$props.pluginId} info={$info()} />
+          <MainContentReady
+            pluginId={$props.pluginId}
+            pluginInstanceKey={$props.pluginInstanceKey}
+            info={$info()}
+          />
         )}
       </Match>
     </Switch>
@@ -81,11 +89,16 @@ const MainContent: Component<{
 
 const MainContentReady: Component<{
   pluginId: PluginId;
+  pluginInstanceKey: PluginInstanceKey;
   info: Plugin["info"];
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const status = createAsync(
+  const $fqn = createMemo(() =>
+    makePluginInstanceFqn($props.pluginId, $props.pluginInstanceKey)
+  );
+
+  const $status = createAsync(
     () =>
       getPluginInstanceStatus($props.pluginId, SINGLETON_PLUGIN_INSTANCE_KEY),
     { initialValue: "unknown" },
@@ -137,9 +150,13 @@ const MainContentReady: Component<{
 
   return (
     <>
-      <Title>{makeTitle(`Plugin: ${$props.info.shownName}`)}</Title>
+      <Title>
+        {makeTitle(`Plugin Instance: ${$props.info.shownName} [ … ]`)}
+      </Title>
       <h1>{$props.info.shownName}</h1>
-      <span>Status: {status()}</span>
+      <span>
+        Status: {$status()} | FQN: <code>{$fqn()}</code>
+      </span>
       <div class={cls("card", $prefersDark() ? "bg-black" : "bg-white")}>
         <div class="card-body">
           <h2 class="card-title">

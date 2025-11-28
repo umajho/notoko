@@ -1,5 +1,9 @@
 import * as z from "zod/v4";
-import { urlEncodeToSafePathSegment } from "~/utils/path-segment-url-encoding";
+import {
+  urlDecodeFromSafePathSegment,
+  UrlEncodedSafePathSegment,
+  urlEncodeToSafePathSegment,
+} from "~/utils/path-segment-url-encoding";
 
 /**
  * “File Stem Safe” means that the ID can be safely used as a file's stem part.
@@ -29,6 +33,10 @@ function makeNullPunctuatedPartSafeId<Brand extends PropertyKey>() {
 
 /**
  * A fully qualified identifier for a plugin.
+ *
+ * example(s):
+ * - `builtin.basic`
+ * - `builtin.prototyping.json_api_connector`
  */
 export const PluginId = makeSimpleFileStemSafeId<"PluginId">();
 export type PluginId = z.infer<typeof PluginId>;
@@ -37,6 +45,10 @@ export type PluginId = z.infer<typeof PluginId>;
  * A name to represent a specific instance of a plugin. Note that different
  * plugins may have instance names with the same key. To uniquely identify a
  * plugin's instance, you need both the plugin ID and the instance key.
+ *
+ * example(s):
+ * - `__singleton__`
+ * - `http://localhost:11111/`
  */
 export const PluginInstanceKey = //
   makeNullPunctuatedPartSafeId<"PluginInstanceKey">();
@@ -44,15 +56,19 @@ export type PluginInstanceKey = z.infer<typeof PluginInstanceKey>;
 
 /**
  * A fully qualified name to represent a specific instance of a plugin.
+ *
+ * example(s):
+ * - `builtin.basic[__singleton__]`
+ * - `builtin.prototyping.json_api_connector[http%3a%2f%2flocalhost%3a11111%2f]`
  */
-export const PluginInstanceFQN = z.string().brand<"PluginInstanceFQN">();
-export type PluginInstanceFQN = z.infer<typeof PluginInstanceFQN>;
+export const PluginInstanceFqn = z.string().brand<"PluginInstanceFqn">();
+export type PluginInstanceFqn = z.infer<typeof PluginInstanceFqn>;
 
-export function makePluginInstanceFQN(
+export function makePluginInstanceFqn(
   pluginId: PluginId,
   instanceKey: PluginInstanceKey,
-): PluginInstanceFQN {
-  return PluginInstanceFQN.parse(
+): PluginInstanceFqn {
+  return PluginInstanceFqn.parse(
     `${pluginId}[${urlEncodeToSafePathSegment(instanceKey)}]`,
   );
 }
@@ -62,6 +78,9 @@ export function makePluginInstanceFQN(
  * different plugin instances may have functionalities with the same key. To
  * uniquely identify a plugin instance's functionality, you need the plugin ID,
  * the instance key, and the functionality key.
+ *
+ * example(s):
+ * - `cmn.phonemizer`
  */
 export const PluginInstanceFunctionalityKey = //
   makeNullPunctuatedPartSafeId<"PluginInstanceFunctionalityKey">();
@@ -71,9 +90,34 @@ export type PluginInstanceFunctionalityKey = z //
 /**
  * A fully qualified name to represent a functionality provided by a plugin
  * instance.
+ *
+ * example(s):
+ * - `builtin.basic[__singleton__][cmn%2ephonemizer]`
  */
-export const FunctionalityFQN = z.string().brand<"FunctionalityFQN">();
-export type FunctionalityFQN = z.infer<typeof FunctionalityFQN>;
+export const FunctionalityFqn = z.string().brand<"FunctionalityFqn">();
+export type FunctionalityFqn = z.infer<typeof FunctionalityFqn>;
+
+export function makeFunctionalityFqn(
+  pluginId: PluginId,
+  instanceKey: PluginInstanceKey,
+  functionalityKey: PluginInstanceFunctionalityKey,
+): FunctionalityFqn {
+  let fqn: string = pluginId;
+  fqn += `[${urlEncodeToSafePathSegment(instanceKey)}]`;
+  fqn += `[${urlEncodeToSafePathSegment(functionalityKey)}]`;
+  return FunctionalityFqn.parse(fqn);
+}
+
+export function extractPluginInstanceFunctionalityKeyFromFqn(
+  fqn: FunctionalityFqn,
+): PluginInstanceFunctionalityKey {
+  const RX = /^.+\[.+\]\[(.+)\]$/;
+  const g = RX.exec(fqn);
+  if (!g) throw new Error("unreachable!");
+  return PluginInstanceFunctionalityKey.parse(
+    urlDecodeFromSafePathSegment(UrlEncodedSafePathSegment.parse(g[1])),
+  );
+}
 
 export const SINGLETON_PLUGIN_INSTANCE_KEY = PluginInstanceKey
   .parse("__singleton__");

@@ -31,7 +31,7 @@ export type FunctionalityPhonemizer = FunctionalityBase & {
   isValidPhoneme(
     segmentationFormat: string,
     phoneme: string,
-  ): IsValidatePhonemeResult;
+  ): IsValidPhonemeResult;
 };
 
 export type PhonemizeResult =
@@ -39,7 +39,7 @@ export type PhonemizeResult =
   | ["error", "unsupported_input_language"]
   | ["error", "unsupported_output_segmentation_format"]
   | ["error", "custom", Error];
-export type IsValidatePhonemeResult =
+export type IsValidPhonemeResult =
   | ["ok", boolean]
   | ["error", "unsupported_segmentation_format"];
 

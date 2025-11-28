@@ -14,3 +14,10 @@ export function bothNonNull<T1, T2>(
   if (a === null || b === null) return null;
   return [a, b];
 }
+
+export function tryExtract<
+  U extends string,
+  T extends { [K in U]: string },
+>(u: U, thing: T, expectedType: T[U]): Extract<T, { [K in U]: T[U] }> | null {
+  return thing[u] === expectedType ? thing as any : null;
+}

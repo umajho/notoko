@@ -13,6 +13,7 @@ export default function Nav() {
       </div>
       <div class="navbar-end">
         <ul class="menu menu-horizontal px-1">
+          <MenuItemLink path="/about">About</MenuItemLink>
           <MenuItemLink path="/preferences">Preferences</MenuItemLink>
         </ul>
       </div>

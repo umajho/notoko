@@ -3,7 +3,7 @@ import { createAsync } from "@solidjs/router";
 
 import type { JSONSchema7, UiSchema } from "@jsfe/shoelace";
 
-import { LoadingSpan } from "./ui/rudimentary";
+import { LoadingSpan } from "../ui/rudimentary";
 
 export const Jsfe: Component<{
   schema: JSONSchema7;
@@ -11,6 +11,7 @@ export const Jsfe: Component<{
   data: object;
   dataChangedCallback: (data: any) => void;
   submitCallback?: (data: any) => void;
+  submitButton?: boolean;
 }> = ($props) => {
   const $isReady = createAsync(async () => {
     await import("@jsfe/shoelace");
@@ -28,6 +29,7 @@ export const Jsfe: Component<{
         prop:data={$props.data}
         prop:dataChangeCallback={$props.dataChangedCallback}
         prop:submitCallback={$props.submitCallback}
+        prop:submitButton={$props.submitButton}
       >
       </jsf-shoelace>
     </Show>
@@ -43,6 +45,7 @@ declare module "solid-js" {
         "prop:data": object;
         "prop:dataChangeCallback": (data: any) => void;
         "prop:submitCallback"?: (data: any) => void;
+        "prop:submitButton"?: boolean;
       };
     }
   }

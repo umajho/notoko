@@ -7,6 +7,7 @@
     "start": "vinxi start --host 127.0.0.1"
   },
   "dependencies": {
+    "@alenaksu/json-viewer": "^2.1.2",
     "@jsfe/shoelace": "^0.4.0",
     "@pinyin-pro/data": "^1.2.0",
     "@shoelace-style/shoelace": "^2.20.1",

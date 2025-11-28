@@ -18,8 +18,8 @@ export default createHandler(() => {
             <link rel="icon" href="/favicon.ico" />
             {assets}
           </head>
-          <body class="flex flex-col h-[100dvh] bg-base-300">
-            <div id="app">{children}</div>
+          <body class="bg-base-300">
+            <div id="app" class="flex flex-col h-dvh">{children}</div>
             {scripts}
           </body>
         </html>

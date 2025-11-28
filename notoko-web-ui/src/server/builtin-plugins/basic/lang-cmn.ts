@@ -7,7 +7,7 @@ import CompleteDict from "@pinyin-pro/data/complete";
 import fastspeech2PinyinRDataCsv from "./data/fastspeech2-pinyin-r/processed.csv?raw";
 
 import type {
-  IsValidatePhonemeResult,
+  IsValidPhonemeResult,
   LanguageSpecifier,
   PhonemeSegment,
   PhonemizeResult,
@@ -84,7 +84,7 @@ export async function phonemize(
 export function isValidPhoneme(
   segmentationFormat: string,
   phoneme: string,
-): IsValidatePhonemeResult {
+): IsValidPhonemeResult {
   const segFormatResult = PhonemizerSupportedOutputSegmentationFormats
     .safeParse(segmentationFormat);
   if (!segFormatResult.success) {
@@ -140,14 +140,14 @@ function phonemizeStandard(
               return { text: origin, phonemes: ["er" + tone] };
           }
 
-          const fsInitialAndFinal = fastspeech2PinyinRData[pinyin]!;
+          let { initial, final } = fastspeech2PinyinRData[pinyin]!;
           const fsTone = tone === "0" ? "5" : tone;
-          fsInitialAndFinal.final += fsTone;
+          final += fsTone;
           const phonemes = [];
-          if (fsInitialAndFinal.initial) {
-            phonemes.push(fsInitialAndFinal.initial);
+          if (initial) {
+            phonemes.push(initial);
           }
-          phonemes.push(fsInitialAndFinal.final);
+          phonemes.push(final);
 
           return { text: origin, phonemes };
         });
