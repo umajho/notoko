@@ -3,9 +3,11 @@ import { phonemize } from "./lang-cmn";
 
 describe("function phonemize", () => {
   async function call(text: string) {
-    return phonemize({ "iso639-3": "cmn" }, text, {
-      outputSegmentationFormat: "fastspeech2-pinyin-r?tones",
-    });
+    return phonemize(
+      { "iso639-3": "cmn", script: { "iso15924": "Hans" } },
+      text,
+      { outputSegmentationFormat: "fastspeech2-pinyin-r?tones" },
+    );
   }
 
   it("works", async () => {

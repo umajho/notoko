@@ -1,4 +1,7 @@
-export type LanguageSpecifier = { "iso639-3": string };
+export type LanguageSpecifier = {
+  "iso639-3": string;
+  script: { "iso15924": string };
+};
 export type LanguageSpecifierWithSegmentationFormat = LanguageSpecifier & {
   segmentationFormat: string;
 };

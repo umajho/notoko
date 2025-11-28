@@ -36,7 +36,9 @@ const [fastspeech2PinyinRData, fastspeech2PinyinRValidPhonemes] = (() => {
   return [result, validPhonemes];
 })();
 
-export const phonemizerSupportedInputLanguages = [{ "iso639-3": "cmn" }];
+export const phonemizerSupportedInputLanguages: LanguageSpecifier[] = [
+  { "iso639-3": "cmn", script: { "iso15924": "Hans" } },
+];
 export const phonemizerSupportedOutputSegmentationFormats = [
   /**
    * `fastspeech2-pinyin-r` is the format from

@@ -108,7 +108,7 @@ export const getFunctionalityInfo = query(
 );
 
 export type PhonemizerPhonemizeActionInput = {
-  language: { "iso639-3": string };
+  language: { "iso639-3": string; script: { "iso15924": string } };
   text: string;
   options: {
     outputSegmentationFormat: string;
@@ -140,7 +140,7 @@ export const phonemizerPhonemizeAction = action(
       return [
         "ok",
         await functionality.phonemize(
-          { "iso639-3": input.language["iso639-3"] },
+          input.language,
           input.text,
           { outputSegmentationFormat: input.options.outputSegmentationFormat },
         ),

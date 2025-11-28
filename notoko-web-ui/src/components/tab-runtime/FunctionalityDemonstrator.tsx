@@ -1,9 +1,20 @@
 import { match, P } from "ts-pattern";
+import * as _ from "es-toolkit";
 
-import { type Component, createSignal, Match, Show, Switch } from "solid-js";
+import {
+  type Component,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  Show,
+  Switch,
+} from "solid-js";
 import { createAsync, useAction } from "@solidjs/router";
 import { Title } from "@solidjs/meta";
 import { usePrefersDark } from "@solid-primitives/media";
+import { VsArrowRight } from "solid-icons/vs";
 
 import {
   type Functionality,
@@ -34,12 +45,12 @@ export const FunctionalityDemonstrator: Component<{
   pluginId: PluginId;
   pluginInstanceKey: PluginInstanceKey;
   pluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey;
-}> = (props) => {
+}> = ($props) => {
   const $fqn = () =>
     makeFunctionalityFqn(
-      props.pluginId,
-      props.pluginInstanceKey,
-      props.pluginInstanceFunctionalityKey,
+      $props.pluginId,
+      $props.pluginInstanceKey,
+      $props.pluginInstanceFunctionalityKey,
     );
 
   const $info = createAsync<Functionality["info"] | "not_found" | "loading">(
@@ -108,8 +119,10 @@ const PhonemizerDemonstrator: Component<{
       <span>
         FQN: <code>{props.fqn}</code>
       </span>
-      <PhonemizerDemonstratorPhonemize {...props} />
-      <PhonemizerDemonstratorIsValidPhoneme {...props} />
+      <div class="flex flex-col gap-4">
+        <PhonemizerDemonstratorPhonemize {...props} />
+        <PhonemizerDemonstratorIsValidPhoneme {...props} />
+      </div>
     </>
   );
 };
@@ -117,24 +130,51 @@ const PhonemizerDemonstrator: Component<{
 const PhonemizerDemonstratorPhonemize: Component<{
   fqn: FunctionalityFqn;
   info: FunctionalityPhonemizer["info"];
-}> = (props) => {
+}> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$input, set$input] = createSignal<any>({});
+  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
+    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
+  );
+  const $selectableScripts = createMemo(() => {
+    const scripts = $props.info.supportedInputLanguages
+      .filter((lang) => lang["iso639-3"] === $selectedLanguage())
+      .map((lang) => lang.script["iso15924"]);
+    return _.uniq(scripts);
+  });
+  const [$selectedScript, set$selectedScript] = //
+    createSignal<string | null>(null);
+  createEffect(() => {
+    const first = $selectableScripts().at(0);
+    set$selectedScript(first ?? null);
+  });
+  const [$selectedSegmentationFormat, set$selectedSegmentationFormat] =
+    createSignal<string | null>(
+      $props.info.supportedOutputSegmentationFormats[0] ?? null,
+    );
+  const [$text, set$text] = createSignal<string>("");
+
   const [$actionResult, set$actionResult] = createSignal<
     FunctionalityActionResult<PhonemizeResult> | null | "processing"
   >(null);
 
-  const phonmeizerPhonemize = useAction(phonemizerPhonemizeAction);
+  const phonemizerPhonemize = useAction(phonemizerPhonemizeAction);
 
-  async function handleSubmit() {
+  async function handleSubmit(ev: Event) {
+    ev.preventDefault();
     if ($actionResult() === "processing") return;
     set$actionResult("processing");
     set$actionResult(
-      await phonmeizerPhonemize(
-        props.fqn,
-        $input() as PhonemizerPhonemizeActionInput,
-      ),
+      await phonemizerPhonemize($props.fqn, {
+        language: {
+          "iso639-3": $selectedLanguage()!,
+          script: { "iso15924": $selectedScript() ?? "Zzzz" },
+        },
+        text: $text(),
+        options: {
+          outputSegmentationFormat: $selectedSegmentationFormat()!,
+        },
+      }),
     );
   }
 
@@ -144,45 +184,86 @@ const PhonemizerDemonstratorPhonemize: Component<{
         <h2 class="card-title">
           Manual Invocation: <code>phonemize</code>
         </h2>
-        <h3>Input:</h3>
-        <Jsfe
-          schema={{
-            type: "object",
-            required: ["inputLanguage", "outputSegmentationFormat"],
-            properties: {
-              language: {
-                type: "object",
-                required: ["iso639-3"],
-                properties: {
-                  "iso639-3": {
-                    type: "string",
-                    enum: props.info.supportedInputLanguages
-                      .map((lang) => lang["iso639-3"]),
-                    default: props.info.supportedInputLanguages[0]
-                      ?.["iso639-3"],
-                  },
-                },
-              },
-              text: { type: "string", default: "" },
-              options: {
-                type: "object",
-                required: ["outputSegmentationFormat"],
-                properties: {
-                  outputSegmentationFormat: {
-                    type: "string",
-                    enum: props.info
-                      .supportedOutputSegmentationFormats as string[],
-                    default: props.info.supportedOutputSegmentationFormats[0],
-                  },
-                },
-              },
-            },
-          }}
-          data={$input()}
-          dataChangedCallback={set$input}
-          submitCallback={handleSubmit}
-          submitButton={$actionResult() !== "processing"}
-        />
+        <form onSubmit={handleSubmit}>
+          <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+            <legend class="fieldset-legend">Input</legend>
+            <div class="flex justify-between">
+              <div class="flex gap-4">
+                <select
+                  class="select select-sm w-fit"
+                  onInput={(ev) => set$selectedLanguage(ev.target.value)}
+                >
+                  <option disabled selected={!$selectedLanguage()}>
+                    Language (ISO 639-3)
+                  </option>
+                  <For each={$props.info.supportedInputLanguages}>
+                    {(lang) => (
+                      <option
+                        value={lang["iso639-3"]}
+                        selected={$selectedLanguage() === lang["iso639-3"]}
+                      >
+                        {lang["iso639-3"]}
+                      </option>
+                    )}
+                  </For>
+                </select>
+                <Show when={$selectableScripts().length}>
+                  <select
+                    class="select select-sm w-fit"
+                    onInput={(ev) => set$selectedScript(ev.target.value)}
+                  >
+                    <option disabled>Script (ISO 15924)</option>
+                    <For each={$selectableScripts()}>
+                      {(script) => (
+                        <option
+                          value={script}
+                          selected={$selectedScript() === script}
+                        >
+                          {script}
+                        </option>
+                      )}
+                    </For>
+                  </select>
+                </Show>
+              </div>
+              <div class="m-auto">
+                <VsArrowRight size={24} />
+              </div>
+              <select
+                class="select select-sm w-fit"
+                onInput={(ev) =>
+                  set$selectedSegmentationFormat(ev.target.value)}
+              >
+                <option disabled selected={!$selectedSegmentationFormat()}>
+                  Segmentation Format
+                </option>
+                <For each={$props.info.supportedOutputSegmentationFormats}>
+                  {(format) => (
+                    <option
+                      value={format}
+                      selected={$selectedSegmentationFormat() === format}
+                    >
+                      {format}
+                    </option>
+                  )}
+                </For>
+              </select>
+            </div>
+            <div class="join w-full">
+              <label class="floating-label w-full">
+                <span>Text</span>
+                <input
+                  type="text"
+                  placeholder="Text"
+                  class="join-item input input-md w-full"
+                  value={$text()}
+                  onInput={(ev) => set$text(ev.target.value)}
+                />
+              </label>
+              <input type="submit" class="btn join-item">Submit</input>
+            </div>
+          </fieldset>
+        </form>
         <Show when={$actionResult()}>
           {($actionResult) => (
             <>
@@ -199,7 +280,7 @@ const PhonemizerDemonstratorPhonemize: Component<{
 const PhonemizerDemonstratorIsValidPhoneme: Component<{
   fqn: FunctionalityFqn;
   info: FunctionalityPhonemizer["info"];
-}> = (props) => {
+}> = ($props) => {
   const $prefersDark = usePrefersDark();
 
   const [$input, set$input] = createSignal<any>({});
@@ -214,7 +295,7 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
     set$actionResult("processing");
     set$actionResult(
       await phonmeizerIsValidPhoneme(
-        props.fqn,
+        $props.fqn,
         $input() as PhonemizerIsValidPhonemeActionInput,
       ),
     );
@@ -234,9 +315,9 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
             properties: {
               segmentationFormat: {
                 type: "string",
-                enum: props.info
+                enum: $props.info
                   .supportedOutputSegmentationFormats as string[],
-                default: props.info.supportedOutputSegmentationFormats[0],
+                default: $props.info.supportedOutputSegmentationFormats[0],
               },
               phoneme: { type: "string", default: "" },
             },
