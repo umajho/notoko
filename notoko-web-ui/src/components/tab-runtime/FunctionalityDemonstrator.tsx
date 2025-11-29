@@ -260,7 +260,9 @@ const PhonemizerDemonstratorPhonemize: Component<{
                   onInput={(ev) => set$text(ev.target.value)}
                 />
               </label>
-              <input type="submit" class="btn join-item">Submit</input>
+              <input type="submit" class="join-item btn btn-primary">
+                Submit
+              </input>
             </div>
           </fieldset>
         </form>
