@@ -31,14 +31,11 @@ import {
   type FunctionalityActionResult,
   getFunctionalityInfo,
   phonemizerIsValidPhonemeAction,
-  type PhonemizerIsValidPhonemeActionInput,
   phonemizerPhonemizeAction,
-  type PhonemizerPhonemizeActionInput,
 } from "~/client-server-bridge/plugin-manager";
 import { LoadingSpan } from "../ui/rudimentary";
 import { stringToNull, tryExtract } from "~/utils/misc";
 import { cls } from "~/utils/cls";
-import { Jsfe } from "../web-components/Jsfe";
 import { JsonViewer } from "../web-components/JsonViewer";
 
 export const FunctionalityDemonstrator: Component<{
@@ -285,21 +282,27 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$input, set$input] = createSignal<any>({});
+  const [$selectedSegmentationFormat, set$selectedSegmentationFormat] =
+    createSignal<string | null>(
+      $props.info.supportedOutputSegmentationFormats[0] ?? null,
+    );
+  const [$inputPhoneme, set$inputPhoneme] = createSignal<any>("");
+
   const [$actionResult, set$actionResult] = createSignal<
     FunctionalityActionResult<IsValidPhonemeResult> | null | "processing"
   >(null);
 
   const phonmeizerIsValidPhoneme = useAction(phonemizerIsValidPhonemeAction);
 
-  async function handleSubmit() {
+  async function handleSubmit(ev: Event) {
+    ev.preventDefault();
     if ($actionResult() === "processing") return;
     set$actionResult("processing");
     set$actionResult(
-      await phonmeizerIsValidPhoneme(
-        $props.fqn,
-        $input() as PhonemizerIsValidPhonemeActionInput,
-      ),
+      await phonmeizerIsValidPhoneme($props.fqn, {
+        segmentationFormat: $selectedSegmentationFormat()!,
+        phoneme: $inputPhoneme(),
+      }),
     );
   }
 
@@ -309,26 +312,45 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
         <h2 class="card-title">
           Manual Invocation: <code>isValidPhoneme</code>
         </h2>
-        <h3>Input:</h3>
-        <Jsfe
-          schema={{
-            type: "object",
-            required: ["segmentationFormat"],
-            properties: {
-              segmentationFormat: {
-                type: "string",
-                enum: $props.info
-                  .supportedOutputSegmentationFormats as string[],
-                default: $props.info.supportedOutputSegmentationFormats[0],
-              },
-              phoneme: { type: "string", default: "" },
-            },
-          }}
-          data={$input()}
-          dataChangedCallback={set$input}
-          submitCallback={handleSubmit}
-          submitButton={$actionResult() !== "processing"}
-        />
+        <form onSubmit={handleSubmit}>
+          <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+            <legend class="fieldset-legend">Input</legend>
+            <div class="join w-full">
+              <select
+                class="join-item select w-fit"
+                onInput={(ev) =>
+                  set$selectedSegmentationFormat(ev.target.value)}
+              >
+                <option disabled selected={!$selectedSegmentationFormat()}>
+                  Segmentation Format
+                </option>
+                <For each={$props.info.supportedOutputSegmentationFormats}>
+                  {(format) => (
+                    <option
+                      value={format}
+                      selected={$selectedSegmentationFormat() === format}
+                    >
+                      {format}
+                    </option>
+                  )}
+                </For>
+              </select>
+              <label class="floating-label w-full">
+                <span>Phoneme</span>
+                <input
+                  type="text"
+                  placeholder="Phoneme"
+                  class="join-item input input-md w-full"
+                  value={$inputPhoneme()}
+                  onInput={(ev) => set$inputPhoneme(ev.target.value)}
+                />
+              </label>
+              <input type="submit" class="join-item btn btn-primary">
+                Submit
+              </input>
+            </div>
+          </fieldset>
+        </form>
         <Show when={$actionResult()}>
           {($actionResult) => (
             <>
