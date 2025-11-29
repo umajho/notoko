@@ -13,7 +13,7 @@ export const basicPlugin: Plugin = {
     version: "0.0.1",
     staticConfigurationSchema: [
       "json_schema",
-      z.toJSONSchema(StaticConfiguration),
+      z.toJSONSchema(StaticConfiguration, { target: "draft-7" }),
     ],
 
     associatedType: "plugin:singleton",

@@ -33,13 +33,12 @@ import {
   phonemizerIsValidPhonemeAction,
   type PhonemizerIsValidPhonemeActionInput,
   phonemizerPhonemizeAction,
-  type PhonemizerPhonemizeActionInput,
 } from "~/client-server-bridge/plugin-manager";
 import { LoadingSpan } from "../ui/rudimentary";
 import { stringToNull, tryExtract } from "~/utils/misc";
 import { cls } from "~/utils/cls";
-import { Jsfe } from "../web-components/Jsfe";
 import { JsonViewer } from "../web-components/JsonViewer";
+import { Rjsf } from "../web-components/Rjsf";
 
 export const FunctionalityDemonstrator: Component<{
   pluginId: PluginId;
@@ -260,7 +259,9 @@ const PhonemizerDemonstratorPhonemize: Component<{
                   onInput={(ev) => set$text(ev.target.value)}
                 />
               </label>
-              <input type="submit" class="btn join-item">Submit</input>
+              <input type="submit" class="join-item btn btn-primary">
+                Submit
+              </input>
             </div>
           </fieldset>
         </form>
@@ -283,21 +284,23 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$input, set$input] = createSignal<any>({});
+  const [$input, set$input] = //
+    createSignal<Partial<PhonemizerIsValidPhonemeActionInput>>({
+      segmentationFormat: $props.info.supportedOutputSegmentationFormats[0],
+      phoneme: "",
+    });
   const [$actionResult, set$actionResult] = createSignal<
     FunctionalityActionResult<IsValidPhonemeResult> | null | "processing"
   >(null);
 
   const phonmeizerIsValidPhoneme = useAction(phonemizerIsValidPhonemeAction);
 
-  async function handleSubmit() {
+  async function handleSubmit(data: any) {
+    set$input(data);
     if ($actionResult() === "processing") return;
     set$actionResult("processing");
     set$actionResult(
-      await phonmeizerIsValidPhoneme(
-        $props.fqn,
-        $input() as PhonemizerIsValidPhonemeActionInput,
-      ),
+      await phonmeizerIsValidPhoneme($props.fqn, data),
     );
   }
 
@@ -308,7 +311,7 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
           Manual Invocation: <code>isValidPhoneme</code>
         </h2>
         <h3>Input:</h3>
-        <Jsfe
+        <Rjsf
           schema={{
             type: "object",
             required: ["segmentationFormat"],
@@ -317,15 +320,13 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
                 type: "string",
                 enum: $props.info
                   .supportedOutputSegmentationFormats as string[],
-                default: $props.info.supportedOutputSegmentationFormats[0],
               },
-              phoneme: { type: "string", default: "" },
+              phoneme: { type: "string" },
             },
           }}
           data={$input()}
-          dataChangedCallback={set$input}
-          submitCallback={handleSubmit}
-          submitButton={$actionResult() !== "processing"}
+          onSubmit={handleSubmit}
+          // shouldDisableSubmit={$actionResult() === "processing"}
         />
         <Show when={$actionResult()}>
           {($actionResult) => (

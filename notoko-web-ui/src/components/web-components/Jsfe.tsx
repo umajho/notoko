@@ -5,6 +5,10 @@ import type { JSONSchema7, UiSchema } from "@jsfe/shoelace";
 
 import { LoadingSpan } from "../ui/rudimentary";
 
+/**
+ * @deprecated It has been replaced by ~`JsonForms`~ `Rjsf` since it doesn't
+ * support things like `oneOf`.
+ */
 export const Jsfe: Component<{
   schema: JSONSchema7;
   uiSchema?: UiSchema;

@@ -1,6 +1,7 @@
+import * as _ from "es-toolkit";
+
 import {
   type Component,
-  createEffect,
   createMemo,
   createSignal,
   Match,
@@ -11,7 +12,6 @@ import { createAsync, useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { Title } from "@solidjs/meta";
 
-import { Jsfe } from "~/components/web-components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
 import {
@@ -30,6 +30,10 @@ import {
 } from "~/client-server-bridge/plugin-manager";
 import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
 import { LoadingSpan } from "~/components/ui/rudimentary";
+import {
+  JsonForms,
+  JsonFormsLiteEx,
+} from "~/components/web-components/JsonForms";
 
 export default (() => {
   const {
@@ -124,10 +128,8 @@ const MainContentReady: Component<{
     { initialValue: null },
   );
 
-  const [$hasUnsavedChanges, set$hasUnsavedChanges] = createSignal(false);
-  function handleChangeStaticConfig(newData: any) {
-    set$hasUnsavedChanges(true);
-  }
+  const [$hasUnsavedStaticConfigChanges, set$hasUnsavedStaticConfigChanges] =
+    createSignal(false);
 
   const setPluginInstanceStaticConfiguration = //
     useAction(setPluginInstanceStaticConfigurationAction);
@@ -139,13 +141,12 @@ const MainContentReady: Component<{
    * - if it returned `["ok"]`, then `set$hasUnsavedChanges(false)`.
    *   - otherwise, we should display the error message given by the plugin.
    */
-  function handleSubmitStaticConfig(newData: any) {
+  function handleSubmitStaticConfig(data: any) {
     setPluginInstanceStaticConfiguration(
       $props.pluginId,
       SINGLETON_PLUGIN_INSTANCE_KEY,
-      newData,
+      data,
     );
-    set$hasUnsavedChanges(false);
   }
 
   return (
@@ -161,7 +162,7 @@ const MainContentReady: Component<{
         <div class="card-body">
           <h2 class="card-title">
             Static Configuration
-            <Show when={$hasUnsavedChanges()}>
+            <Show when={$hasUnsavedStaticConfigChanges()}>
               <span class="italic text-sm">(*unsaved changes)</span>
             </Show>
           </h2>
@@ -170,11 +171,11 @@ const MainContentReady: Component<{
             fallback={<LoadingSpan class="mx-auto" size="xl" />}
           >
             {($both) => (
-              <Jsfe
-                schema={$both()[0]}
+              <JsonFormsLiteEx
                 data={$both()[1]}
-                dataChangedCallback={handleChangeStaticConfig}
-                submitCallback={handleSubmitStaticConfig}
+                onSubmit={handleSubmitStaticConfig}
+                setHasUnsavedChanges={set$hasUnsavedStaticConfigChanges}
+                schema={$both()[0]}
               />
             )}
           </Show>
