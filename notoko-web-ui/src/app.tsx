@@ -3,6 +3,7 @@ import { FileRoutes } from "@solidjs/start/router";
 import { Suspense } from "solid-js";
 import { MetaProvider } from "@solidjs/meta";
 import { usePrefersDark } from "@solid-primitives/media";
+import { Toaster } from "solid-sonner";
 
 import "@shoelace-style/shoelace/dist/themes/light.css";
 import "@shoelace-style/shoelace/dist/themes/dark.css";
@@ -27,6 +28,7 @@ export default function App() {
     <Router
       root={($props) => (
         <MetaProvider>
+          <Toaster richColors />
           <div class={cls("contents", $prefersDark() && "sl-theme-dark")}>
             <Nav />
             <Suspense>{$props.children}</Suspense>

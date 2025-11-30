@@ -8,7 +8,7 @@ import fastspeech2PinyinRDataCsv from "./data/fastspeech2-pinyin-r/processed.csv
 
 import type {
   IsValidPhonemeResult,
-  LanguageSpecifier,
+  LanguageSpecifierWithScript,
   PhonemeSegment,
   PhonemizeResult,
 } from "~/definitions.mod";
@@ -36,9 +36,10 @@ const [fastspeech2PinyinRData, fastspeech2PinyinRValidPhonemes] = (() => {
   return [result, validPhonemes];
 })();
 
-export const phonemizerSupportedInputLanguages: LanguageSpecifier[] = [
-  { "iso639-3": "cmn", script: { "iso15924": "Hans" } },
-];
+export const phonemizerSupportedInputLanguages: LanguageSpecifierWithScript[] =
+  [
+    { "iso639-3": "cmn", script: { "iso15924": "Hans" } },
+  ];
 export const phonemizerSupportedOutputSegmentationFormats = [
   /**
    * `fastspeech2-pinyin-r` is the format from
@@ -63,7 +64,7 @@ type PhonemizerSupportedOutputSegmentationFormat = //
   z.infer<typeof PhonemizerSupportedOutputSegmentationFormats>;
 
 export async function phonemize(
-  lang: LanguageSpecifier,
+  lang: LanguageSpecifierWithScript,
   text: string,
   opts: { outputSegmentationFormat: string },
 ): Promise<PhonemizeResult> {

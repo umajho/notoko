@@ -1,0 +1,595 @@
+From e8588c1c73c2abc973568402308b26f9c90701e1 Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Wed, 19 Nov 2025 19:25:57 +0800
+Subject: [PATCH 3/5] let copilot create `api-server.py`
+
+4 commits squashed.
+---
+ api-server.py                    | 271 +++++++++++++++++++++++++++++++
+ refactoring/adapters.py          |   8 +-
+ refactoring/inference_service.py |   5 +-
+ refactoring/instructions/1.md    |   2 +-
+ refactoring/instructions/2.md    |  79 +++++++++
+ refactoring/types.py             |   3 +-
+ utils/tools.py                   |  90 ++++------
+ 7 files changed, 395 insertions(+), 63 deletions(-)
+ create mode 100644 api-server.py
+ create mode 100644 refactoring/instructions/2.md
+
+diff --git a/api-server.py b/api-server.py
+new file mode 100644
+index 0000000..75f9b69
+--- /dev/null
++++ b/api-server.py
+@@ -0,0 +1,271 @@
++"""Flask API server for FastSpeech2 inference service."""
++
++from flask import Flask, request, jsonify
++from typing import Any
++import numpy as np
++
++from refactoring import InferenceService, LanguageSpecifier, PhonemizeResult, PhonemeSegment, DurationResult
++from utils.tools import generate_prosody_json
++
++app = Flask(__name__)
++
++# Initialize InferenceService with default configurations
++# This will be initialized when the server starts
++inference_service: InferenceService | None = None
++
++
++def validate_language_and_segmentation(lang_iso639: str, seg_format: str) -> tuple[bool, str | None]:
++    """
++    Validate language and segmentation format compatibility.
++    
++    Returns:
++        (is_valid, error_message)
++    """
++    # Define valid combinations
++    valid_combinations = {
++        "eng": ["librispeech"],
++        "cmn": ["fastspeech2-pinyin-r"]
++    }
++    
++    if lang_iso639 not in valid_combinations:
++        return False, f"unsupported language `{lang_iso639}`"
++    
++    if seg_format not in valid_combinations[lang_iso639]:
++        return False, f"unsupported segmentation format `{seg_format}` for language `{lang_iso639}`"
++    
++    return True, None
++
++
++def validate_durations_shape(segments: list[dict[str, Any]], durations_2d: list[list[int]]) -> tuple[bool, str | None]:
++    """
++    Validate that durations_2d shape matches segments structure.
++    
++    Returns:
++        (is_valid, error_message)
++    """
++    if len(segments) != len(durations_2d):
++        return False, f"durations_2d length ({len(durations_2d)}) does not match segments length ({len(segments)})"
++    
++    for i, (segment, durations) in enumerate(zip(segments, durations_2d)):
++        phonemes = segment.get("phonemes", [])
++        if len(phonemes) != len(durations):
++            return False, f"durations_2d[{i}] length ({len(durations)}) does not match segments[{i}].phonemes length ({len(phonemes)})"
++    
++    return True, None
++
++
++@app.route("/predict_duration", methods=["POST"])
++def predict_duration():
++    """Predict duration for phoneme segments."""
++    try:
++        data = request.get_json()
++        
++        # Validate request structure
++        if not data or "language" not in data or "segments" not in data:
++            return jsonify(["error", {"message": "missing required fields: language, segments"}]), 400
++        
++        # Parse language
++        language = data["language"]
++        lang_iso639 = language.get("iso-639")
++        seg_format = language.get("segmentation_format")
++        
++        if not lang_iso639 or not seg_format:
++            return jsonify(["error", {"message": "language must have iso-639 and segmentation_format"}]), 400
++        
++        # Validate language and segmentation format
++        is_valid, error_msg = validate_language_and_segmentation(lang_iso639, seg_format)
++        if not is_valid:
++            return jsonify(["error", {"message": error_msg}]), 400
++        
++        # Parse segments
++        segments = data["segments"]
++        if not isinstance(segments, list):
++            return jsonify(["error", {"message": "segments must be a list"}]), 400
++        
++        # Convert to PhonemizeResult
++        phoneme_segments = []
++        for seg in segments:
++            if "text" not in seg or "phonemes" not in seg:
++                return jsonify(["error", {"message": "each segment must have text and phonemes"}]), 400
++            phoneme_segments.append(PhonemeSegment(text=seg["text"], phonemes=seg["phonemes"]))
++        
++        phonemize_result = PhonemizeResult(segments=phoneme_segments)
++        
++        # Create LanguageSpecifier
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
++        
++        # Call inference service
++        duration_result = inference_service.predict_duration(lang_spec, phonemize_result)
++        
++        # Format response
++        response = {
++            "ticksPerSecond": duration_result.ticks_per_second,
++            "durations2d": duration_result.durations_2d,
++            "durationUnitInTicks": duration_result.duration_unit_in_ticks
++        }
++        
++        return jsonify(["ok", response]), 200
++        
++    except Exception as e:
++        return jsonify(["error", {"message": f"internal error: {str(e)}"}]), 500
++
++
++@app.route("/generate_prosody", methods=["POST"])
++def generate_prosody():
++    """Generate prosody data from phoneme segments and optional durations."""
++    try:
++        data = request.get_json()
++        
++        # Validate request structure
++        if not data or "language" not in data or "segments" not in data:
++            return jsonify(["error", {"message": "missing required fields: language, segments"}]), 400
++        
++        # Parse language
++        language = data["language"]
++        lang_iso639 = language.get("iso-639")
++        seg_format = language.get("segmentation_format")
++        
++        if not lang_iso639 or not seg_format:
++            return jsonify(["error", {"message": "language must have iso-639 and segmentation_format"}]), 400
++        
++        # Validate language and segmentation format
++        is_valid, error_msg = validate_language_and_segmentation(lang_iso639, seg_format)
++        if not is_valid:
++            return jsonify(["error", {"message": error_msg}]), 400
++        
++        # Parse segments
++        segments = data["segments"]
++        if not isinstance(segments, list):
++            return jsonify(["error", {"message": "segments must be a list"}]), 400
++        
++        # Convert to PhonemizeResult
++        phoneme_segments = []
++        for seg in segments:
++            if "text" not in seg or "phonemes" not in seg:
++                return jsonify(["error", {"message": "each segment must have text and phonemes"}]), 400
++            phoneme_segments.append(PhonemeSegment(text=seg["text"], phonemes=seg["phonemes"]))
++        
++        phonemize_result = PhonemizeResult(segments=phoneme_segments)
++        
++        # Create LanguageSpecifier
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
++        
++        # Get or predict durations
++        durations_2d = data.get("durations2d")
++        
++        if durations_2d is not None:
++            # Validate durations shape
++            is_valid, error_msg = validate_durations_shape(segments, durations_2d)
++            if not is_valid:
++                return jsonify(["error", {"message": error_msg}]), 400
++            
++            # Get config for frames_per_second and hop_length
++            lang_code = lang_iso639
++            preprocess_config, _, _ = inference_service.configs[lang_code]
++            frames_per_second = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
++            hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++            
++            # Create DurationResult from provided durations
++            duration_result = DurationResult(
++                ticks_per_second=frames_per_second,
++                durations_2d=durations_2d,
++                duration_unit_in_ticks=hop_length
++            )
++        else:
++            # Predict durations using inference service
++            duration_result = inference_service.predict_duration(lang_spec, phonemize_result)
++        
++        # Predict pitch and energy
++        predict_result = inference_service.predict_pitch_and_energy(
++            lang_spec, phonemize_result, duration_result
++        )
++        
++        # Infer audio to get actual pitch
++        infer_result = inference_service.infer_audio(lang_spec, predict_result)
++        
++        # Prepare data for generate_prosody_json
++        # Flatten all phonemes
++        all_phonemes = []
++        for segment in phonemize_result.segments:
++            all_phonemes.extend(segment.phonemes)
++        
++        # Flatten durations
++        all_durations = []
++        for seg_durations in duration_result.durations_2d:
++            all_durations.extend(seg_durations)
++        all_durations = np.array(all_durations)
++        
++        # Convert segments to format expected by generate_prosody_json
++        segments_data = []
++        for segment in phonemize_result.segments:
++            segments_data.append({
++                "text": segment.text,
++                "phonemes": segment.phonemes
++            })
++        
++        # Reconstruct raw text from segments
++        raw_text = "".join(seg.text for seg in phonemize_result.segments)
++        
++        # Determine language name
++        language_name = "mandarin" if lang_iso639 == "cmn" else "english"
++        
++        # Generate prosody JSON
++        prosody_data = generate_prosody_json(
++            raw_text=raw_text,
++            phonemes=all_phonemes,
++            durations=all_durations,
++            actual_pitch=infer_result.actual_pitch,
++            hop_length=infer_result.hop_length,
++            sampling_rate=infer_result.sampling_rate,
++            segments_data=segments_data,
++            ticks_per_point=1,
++            language=language_name,
++        )
++        
++        return jsonify(["ok", prosody_data]), 200
++        
++    except Exception as e:
++        import traceback
++        traceback.print_exc()
++        return jsonify(["error", {"message": f"internal error: {str(e)}"}]), 500
++
++
++def initialize_service(config_map: dict[str, dict[str, Any]]):
++    """Initialize the inference service with configuration."""
++    global inference_service
++    inference_service = InferenceService(configuration_map=config_map)
++
++
++if __name__ == "__main__":
++    import argparse
++    
++    parser = argparse.ArgumentParser(description="FastSpeech2 API Server")
++    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to")
++    parser.add_argument("--port", type=int, default=11111, help="Port to bind to")
++    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
++    
++    args = parser.parse_args()
++    
++    # Build configuration map
++    config_map = {
++      # "eng": {
++      #   "restore_step": 900000,
++      #   "p": "config/LJSpeech/preprocess.yaml",
++      #   "m": "config/LJSpeech/model.yaml",
++      #   "t": "config/LJSpeech/train.yaml",
++      # },
++      "cmn": {
++        "speaker_id": 1,
++        "restore_step": 600000,
++        "p": "config/AISHELL3/preprocess.yaml",
++        "m": "config/AISHELL3/model.yaml",
++        "t": "config/AISHELL3/train.yaml",
++      },
++    }
++    
++    print("Initializing InferenceService...")
++    initialize_service(config_map)
++    print("InferenceService initialized successfully!")
++    
++    print(f"Starting server on {args.host}:{args.port}")
++    app.run(host=args.host, port=args.port, debug=args.debug)
+diff --git a/refactoring/adapters.py b/refactoring/adapters.py
+index 436aabf..03b8f19 100644
+--- a/refactoring/adapters.py
++++ b/refactoring/adapters.py
+@@ -92,7 +92,8 @@ def prepare_model_input(
+ def extract_duration_from_output(
+     output: tuple[Any, ...],
+     phonemize_result: PhonemizeResult,
+-    sampling_rate: int
++    sampling_rate: int,
++    hop_length: int
+ ) -> DurationResult:
+     """Extract duration information from model output."""
+     # output[5] is d_rounded (duration predictions)
+@@ -110,8 +111,9 @@ def extract_duration_from_output(
+         durations_2d.append(segment_durations)
+     
+     return DurationResult(
+-        frames_per_second=sampling_rate,
+-        durations_2d=durations_2d
++        ticks_per_second=sampling_rate,
++        durations_2d=durations_2d,
++        duration_unit_in_ticks=hop_length
+     )
+ 
+ 
+diff --git a/refactoring/inference_service.py b/refactoring/inference_service.py
+index 707ab76..2c42a78 100644
+--- a/refactoring/inference_service.py
++++ b/refactoring/inference_service.py
+@@ -106,7 +106,7 @@ class InferenceService:
+                 - duration_control: float, control speaking speed (default 1.0)
+                 
+         Returns:
+-            DurationResult with frames_per_second and durations_2d
++            DurationResult with ticks_per_second and durations_2d
+         """
+         lang_code = self._get_lang_code(lang)
+         preprocess_config, model_config, train_config = self.configs[lang_code]
+@@ -132,7 +132,8 @@ class InferenceService:
+         
+         # Extract duration from output
+         sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+-        return extract_duration_from_output(output, phonemize_result, sampling_rate)
++        hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++        return extract_duration_from_output(output, phonemize_result, sampling_rate, hop_length)
+     
+     def predict_pitch_and_energy(
+         self,
+diff --git a/refactoring/instructions/1.md b/refactoring/instructions/1.md
+index ab64f9f..2e8febc 100644
+--- a/refactoring/instructions/1.md
++++ b/refactoring/instructions/1.md
+@@ -71,7 +71,7 @@ def predict_duration(self, lang, phonemize_result, **opts):
+   returns something like (dataclasses):
+   ```
+   {
+-    "framesPerSecond": 22050, # not hardcoded.
++    "ticksPerSecond": 22050, # not hardcoded.
+     # maps to segments-phonemes.
+     "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]],
+   }
+diff --git a/refactoring/instructions/2.md b/refactoring/instructions/2.md
+new file mode 100644
+index 0000000..3340a56
+--- /dev/null
++++ b/refactoring/instructions/2.md
+@@ -0,0 +1,79 @@
++I have installed flask.
++
++Now, in `api-server.py`, create an API server that uses the inference service.
++
++the server has the following endpoints:
++
++## `POST /predict_duration`
++
++example request:
++
++```json
++{
++  "language": {
++    "iso-639": "cmn",
++    "segmentation_format": "fastspeech2-pinyin-r"
++  },
++  "segments": [
++    { "text": "你", "phonemes": ["n", "i3"] },
++    { "text": "好", "phonemes": ["h", "ao3"] },
++    { "text": "，", "phonemes": ["sp"] },
++    { "text": "世", "phonemes": ["sh", "iii4"] },
++    { "text": "界", "phonemes": ["j", "ie4"] }
++  ]
++}
++```
++
++example OK response (200):
++
++```json
++["ok", {
++  "ticksPerSecond": 22050,
++  "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]]
++}]
++```
++
++example BAD response (400 (caller's fault)):
++
++```json
++["error", {
++  "message": "unsupported segmentation format `librispeech` for language `cmn`"
++}]
++```
++
++## `POST /generate_prosody`
++
++example request:
++
++```json
++{
++  "language": {
++    "iso-639": "cmn",
++    "segmentation_format": "fastspeech2-pinyin-r"
++  },
++  "segments": [
++    { "text": "你", "phonemes": ["n", "i3"] },
++    { "text": "好", "phonemes": ["h", "ao3"] },
++    { "text": "，", "phonemes": ["sp"] },
++    { "text": "世", "phonemes": ["sh", "iii4"] },
++    { "text": "界", "phonemes": ["j", "ie4"] }
++  ],
++  "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]]
++}
++```
++
++`durations2d` is optional. If it is not in the request, the request handler
++calls `InferenceService.predict_duration` by itself.
++
++if `durations2d` is provided, its shape should be validated with `segments`.
++
++example OK response:
++
++```json
++["ok", {/* … */}]
++```
++
++where `{/* … */}` is the content of the prosody json. (returned by
++`generate_prosody_json`.)
++
++calling these endpoints should not result in files being outputted to the disk.
+diff --git a/refactoring/types.py b/refactoring/types.py
+index 2bafd87..7b678d1 100644
+--- a/refactoring/types.py
++++ b/refactoring/types.py
+@@ -28,8 +28,9 @@ class PhonemizeResult:
+ @dataclass
+ class DurationResult:
+     """Result of duration prediction."""
+-    frames_per_second: int
++    ticks_per_second: int
+     durations_2d: list[list[int]]  # Maps to segments->phonemes
++    duration_unit_in_ticks: int  # Number of ticks per duration unit
+ 
+ 
+ @dataclass
+diff --git a/utils/tools.py b/utils/tools.py
+index 7338de2..d50ef5c 100644
+--- a/utils/tools.py
++++ b/utils/tools.py
+@@ -374,7 +374,7 @@ def synth_one_sample(targets, predictions, vocoder, model_config, preprocess_con
+     return fig, wav_reconstruction, wav_prediction, basename
+ 
+ 
+-def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_length, sampling_rate, segments_data, ticks_per_point=256, language="mandarin", total_duration_ticks=None):
++def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_length, sampling_rate, segments_data, ticks_per_point=256, language="mandarin"):
+     """
+     Generate prosody JSON data structure from text, phonemes, durations and pitch.
+     
+@@ -389,7 +389,6 @@ def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_lengt
+                        Each dict has 'type', 'text', and 'phonemes'
+         ticks_per_point: Number of audio samples between each pitch point (default: 256)
+         language: Language of the input text, either "mandarin" or "english" (default: "mandarin")
+-        total_duration_ticks: Actual audio duration in samples (if provided, overrides duration calculation)
+     
+     Returns:
+         Dictionary with prosody data in the specified format
+@@ -398,62 +397,45 @@ def generate_prosody_json(raw_text, phonemes, durations, actual_pitch, hop_lengt
+     
+     # The durations are in mel frames, need to convert to samples (ticks)
+     # Each mel frame = hop_length samples
+-    # But if total_duration_ticks is provided, use that as the actual audio length
+     
+     segments = []
+     phoneme_idx = 0
+     
+     # Process each segment from the preprocessing
+     for segment_num, segment in enumerate(segments_data):
+-        if segment["type"] == "space":
+-            # Space segment
+-            space_duration = 0
+-            # Consume phonemes for this space
+-            for _ in range(len(segment["phonemes"])):
+-                if phoneme_idx < len(phonemes):
+-                    # Convert mel frames to samples
+-                    space_duration += int(durations[phoneme_idx] * hop_length)
+-                    phoneme_idx += 1
+-            
+-            if space_duration > 0:
+-                segments.append({
+-                    "type": "space",
+-                    "durationTicks": space_duration
+-                })
+-        else:
+-            # Character or word segment
+-            char_phonemes = []
+-            char_duration_ticks = 0
+-            
+-            # Consume phonemes for this character/word
+-            for phon in segment["phonemes"]:
+-                if phoneme_idx < len(phonemes):
+-                    # Convert mel frames to samples
+-                    dur_ticks = int(durations[phoneme_idx] * hop_length)
+-                    
+-                    # Clean up phoneme (remove @ prefix)
+-                    raw_phoneme = phonemes[phoneme_idx].replace('@', '')
+-                    
+-                    # Create phoneme entry with renamed field
+-                    phoneme_entry = {
+-                        "rawText": raw_phoneme,
+-                        "durationTicks": dur_ticks
+-                    }
+-                    
+-                    if raw_phoneme in valid_symbols or raw_phoneme.rstrip('12345') in valid_symbols:
+-                        phoneme_entry["fsPinyin"] = raw_phoneme.rstrip('12345')
+-                    
+-                    char_phonemes.append(phoneme_entry)
+-                    
+-                    char_duration_ticks += dur_ticks
+-                    phoneme_idx += 1
+-            
+-            # Add character/word segment
+-            if char_phonemes:
+-                segments.append({
+-                    "text": segment["text"],
+-                    "phonemes": char_phonemes
+-                })
++        # Process all segments uniformly (both text and space)
++        char_phonemes = []
++        char_duration_ticks = 0
++        
++        # Consume phonemes for this segment
++        for phon in segment["phonemes"]:
++            if phoneme_idx < len(phonemes):
++                # Convert mel frames to samples
++                dur_ticks = int(durations[phoneme_idx] * hop_length)
++                
++                # Clean up phoneme (remove @ prefix)
++                raw_phoneme = phonemes[phoneme_idx].replace('@', '')
++                
++                # Create phoneme entry with renamed field
++                phoneme_entry = {
++                    "rawText": raw_phoneme,
++                    "durationTicks": dur_ticks
++                }
++                
++                if raw_phoneme in valid_symbols or raw_phoneme.rstrip('12345') in valid_symbols:
++                    phoneme_entry["fsPinyin"] = raw_phoneme.rstrip('12345')
++                
++                char_phonemes.append(phoneme_entry)
++                
++                char_duration_ticks += dur_ticks
++                phoneme_idx += 1
++        
++        # Add segment with text and phonemes
++        if char_phonemes:
++            segments.append({
++                "text": segment["text"],
++                "phonemes": char_phonemes
++            })
+     
+     # Calculate total duration from segments
+     calculated_total = sum(sum(phoneme["durationTicks"] for phoneme in seg["phonemes"]) for seg in segments)
+@@ -931,9 +913,6 @@ def generate_prosody_json_from_infer_result(
+             "phonemes": segment.phonemes
+         })
+     
+-    # Calculate total audio duration
+-    total_duration_ticks = len(infer_result.wav)
+-    
+     # Use existing generate_prosody_json function
+     return generate_prosody_json(
+         raw_text=raw_text,
+@@ -945,7 +924,6 @@ def generate_prosody_json_from_infer_result(
+         segments_data=segments_data,
+         ticks_per_point=1,
+         language=language,
+-        total_duration_ticks=total_duration_ticks
+     )
+ 
+ 
+-- 
+2.50.1
+

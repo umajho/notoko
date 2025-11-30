@@ -8,19 +8,25 @@ import {
   createSignal,
   For,
   Match,
+  onMount,
+  type Setter,
   Show,
   Switch,
 } from "solid-js";
 import { createAsync, useAction } from "@solidjs/router";
-import { Title } from "@solidjs/meta";
 import { usePrefersDark } from "@solid-primitives/media";
-import { VsArrowRight } from "solid-icons/vs";
+import { VsArrowRight, VsError } from "solid-icons/vs";
+import { toast } from "solid-sonner";
 
 import {
+  type DurationPredictResult,
   type Functionality,
+  type FunctionalityDurationPredictor,
   FunctionalityFqn,
   type FunctionalityPhonemizer,
+  type FunctionalityProsodyGenerator,
   type IsValidPhonemeResult,
+  type LanguageSpecifierWithSegmentationFormat,
   makeFunctionalityFqn,
   type PhonemizeResult,
   type PluginId,
@@ -28,20 +34,34 @@ import {
   type PluginInstanceKey,
 } from "~/definitions.mod";
 import {
+  durationPredictorPredictDurationAction,
   type FunctionalityActionResult,
   getFunctionalityInfo,
   phonemizerIsValidPhonemeAction,
   phonemizerPhonemizeAction,
+  prosodyGeneratorGenerateProsodyAction,
+  type ProsodyGeneratorGenerateProsodyActionInputDuration,
 } from "~/client-server-bridge/plugin-manager";
-import { LoadingSpan } from "../ui/rudimentary";
+import {
+  type ButtonTabEntry,
+  ButtonTabs,
+  LoadingSpan,
+} from "../ui/rudimentary";
 import { stringToNull, tryExtract } from "~/utils/misc";
 import { cls } from "~/utils/cls";
 import { JsonViewer } from "../web-components/JsonViewer";
+import {
+  JsonTextarea,
+  NumberInputThatCanBeFallbackToTextInput,
+} from "../ui/misc";
 
 export const FunctionalityDemonstrator: Component<{
   pluginId: PluginId;
   pluginInstanceKey: PluginInstanceKey;
   pluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey;
+  // NOTE: using `<Title />` to set title in `*Demonstrator` breaks the app,
+  // so pass the title out to let the parent set it instead.
+  set$title: Setter<string>;
 }> = ($props) => {
   const $fqn = () =>
     makeFunctionalityFqn(
@@ -64,13 +84,13 @@ export const FunctionalityDemonstrator: Component<{
   }
   function tryExtractDurationPredictor(
     info: Functionality["info"],
-  ): Functionality["info"] | null {
+  ): FunctionalityDurationPredictor["info"] | null {
     // @ts-ignore
     return tryExtract("associatedType", info, `${p}duration_predictor`);
   }
   function tryExtractProsodyGenerator(
     info: Functionality["info"],
-  ): Functionality["info"] | null {
+  ): FunctionalityProsodyGenerator["info"] | null {
     // @ts-ignore
     return tryExtract("associatedType", info, `${p}prosody_generator`);
   }
@@ -87,16 +107,31 @@ export const FunctionalityDemonstrator: Component<{
         {($info) => (
           <Switch>
             <Match when={tryExtractPhonemizer($info())}>
-              <PhonemizerDemonstrator
-                fqn={$fqn()}
-                info={tryExtractPhonemizer($info())!}
-              />
+              {($info) => (
+                <PhonemizerDemonstrator
+                  fqn={$fqn()}
+                  info={$info()}
+                  set$title={$props.set$title}
+                />
+              )}
             </Match>
             <Match when={tryExtractDurationPredictor($info())}>
-              TODO
+              {($info) => (
+                <DurationPredictorDemonstrator
+                  fqn={$fqn()}
+                  info={$info()}
+                  set$title={$props.set$title}
+                />
+              )}
             </Match>
             <Match when={tryExtractProsodyGenerator($info())}>
-              TODO
+              {($info) => (
+                <ProsodyGeneratorDemonstrator
+                  fqn={$fqn()}
+                  info={$info()}
+                  set$title={$props.set$title}
+                />
+              )}
             </Match>
           </Switch>
         )}
@@ -108,17 +143,21 @@ export const FunctionalityDemonstrator: Component<{
 const PhonemizerDemonstrator: Component<{
   fqn: FunctionalityFqn;
   info: FunctionalityPhonemizer["info"];
-}> = (props) => {
+  set$title: Setter<string>;
+}> = ($props) => {
+  onMount(() => {
+    $props.set$title(`Phonemizer: ${$props.info.shownName}`);
+  });
+
   return (
     <>
-      <Title>Phonemizer: {props.info.shownName}</Title>
-      <h1>Phonemizer: {props.info.shownName}</h1>
+      <h1>Phonemizer: {$props.info.shownName}</h1>
       <span>
-        FQN: <code>{props.fqn}</code>
+        FQN: <code>{$props.fqn}</code>
       </span>
       <div class="flex flex-col gap-4">
-        <PhonemizerDemonstratorPhonemize {...props} />
-        <PhonemizerDemonstratorIsValidPhoneme {...props} />
+        <PhonemizerDemonstratorPhonemize {...$props} />
+        <PhonemizerDemonstratorIsValidPhoneme {...$props} />
       </div>
     </>
   );
@@ -364,13 +403,396 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
   );
 };
 
+const DurationPredictorDemonstrator: Component<{
+  fqn: FunctionalityFqn;
+  info: FunctionalityDurationPredictor["info"];
+  set$title: Setter<string>;
+}> = ($props) => {
+  onMount(() => {
+    $props.set$title(`Duration Predictor: ${$props.info.shownName}`);
+  });
+
+  return (
+    <>
+      <h1>Duration Predictor: {$props.info.shownName}</h1>
+      <span>
+        FQN: <code>{$props.fqn}</code>
+      </span>
+      <div class="flex flex-col gap-4">
+        <DurationPredictorDemonstratorPredictDuration {...$props} />
+      </div>
+    </>
+  );
+};
+
+const DurationPredictorDemonstratorPredictDuration: Component<{
+  fqn: FunctionalityFqn;
+  info: FunctionalityDurationPredictor["info"];
+}> = ($props) => {
+  const $prefersDark = usePrefersDark();
+
+  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
+    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
+  );
+  const [$selectedSegFormat, set$selectedSegFormat] = //
+    createSignal<string | null>(null);
+
+  const [$validSegsData, set$validSegsData] = createSignal(null);
+
+  const [$speed, set$speed] = createSignal(1);
+  const $isSpeedValid = () => $speed() > 0;
+
+  const $areInputsValid = () => !!$validSegsData() && $isSpeedValid();
+
+  const [$actionResult, set$actionResult] = createSignal<
+    FunctionalityActionResult<DurationPredictResult> | null | "processing"
+  >(null);
+
+  const predictDuration = useAction(durationPredictorPredictDurationAction);
+
+  async function handleSubmit(ev: Event) {
+    ev.preventDefault();
+    if ($actionResult() === "processing") return;
+    if (!$areInputsValid()) return;
+    set$actionResult("processing");
+
+    set$actionResult(
+      await predictDuration($props.fqn, {
+        language: {
+          "iso639-3": $selectedLanguage()!,
+          segmentationFormat: $selectedSegFormat()!,
+        },
+        phonemeSegments: $validSegsData()!,
+        options: { speed: $speed() },
+      }),
+    );
+  }
+
+  return (
+    <div class={cls("card", $prefersDark() ? "bg-black" : "bg-white")}>
+      <div class="card-body">
+        <h2 class="card-title">
+          Manual Invocation: <code>predictDuration</code>
+        </h2>
+        <form onSubmit={handleSubmit}>
+          <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+            <legend class="fieldset-legend">Input</legend>
+            <div class="flex justify-between items-center">
+              <LanguageAndSegmentationSelector
+                selectedLanguage={$selectedLanguage()}
+                set$selectedLanguage={set$selectedLanguage}
+                supportedInputLanguages={$props.info.supportedInputLanguages}
+                selectedSegmentationFormat={$selectedSegFormat()}
+                set$selectedSegmentationFormat={set$selectedSegFormat}
+              />
+              <input
+                type="submit"
+                class="btn btn-primary"
+                disabled={!$areInputsValid()}
+              >
+                Submit
+              </input>
+            </div>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">
+                Phoneme Segments
+                <Show when={!$validSegsData()}>
+                  <span class="text-error text-xs italic">
+                    (*invalid)
+                  </span>
+                </Show>
+              </legend>
+              <JsonTextarea
+                placeholder="[…]"
+                set$validData={set$validSegsData}
+              />
+            </fieldset>
+            <label class="floating-label">
+              <span>
+                Speed
+                <Show when={!$isSpeedValid()}>
+                  <span class="text-error text-xs italic">
+                    (*invalid)
+                  </span>
+                </Show>
+              </span>
+              <NumberInputThatCanBeFallbackToTextInput
+                step={0.05}
+                min={0}
+                value={$speed()}
+                set$value={set$speed}
+              />
+            </label>
+          </fieldset>
+        </form>
+        <Show when={$actionResult()}>
+          {($actionResult) => (
+            <>
+              <h3>Result:</h3>
+              <ActionJsonResultDisplayer actionResult={$actionResult()} />
+            </>
+          )}
+        </Show>
+      </div>
+    </div>
+  );
+};
+
+const ProsodyGeneratorDemonstrator: Component<{
+  fqn: FunctionalityFqn;
+  info: FunctionalityProsodyGenerator["info"];
+  set$title: Setter<string>;
+}> = ($props) => {
+  onMount(() => {
+    $props.set$title(`Prosody Generator: ${$props.info.shownName}`);
+  });
+
+  return (
+    <>
+      <h1>Prosody Generator: {$props.info.shownName}</h1>
+      <span>
+        FQN: <code>{$props.fqn}</code>
+      </span>
+      <div class="flex flex-col gap-4">
+        <ProsodyGeneratorDemonstratorGenerateProsody {...$props} />
+      </div>
+    </>
+  );
+};
+
+const ProsodyGeneratorDemonstratorGenerateProsody: Component<{
+  fqn: FunctionalityFqn;
+  info: FunctionalityProsodyGenerator["info"];
+}> = ($props) => {
+  const $prefersDark = usePrefersDark();
+
+  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
+    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
+  );
+  const [$selectedSegFormat, set$selectedSegFormat] = //
+    createSignal<string | null>(null);
+
+  const [$validSegsData, set$validSegsData] = createSignal(null);
+
+  const [$durationMode, set$durationMode] = createSignal<"simple" | "custom">(
+    $props.info.durationInput === "forbidden" ? "simple" : "custom",
+  );
+  const $durationModeTabEntries = createMemo<ButtonTabEntry[]>(() => [
+    {
+      name: "Custom",
+      isActive: $durationMode() === "custom",
+      isDisabled: $props.info.durationInput === "forbidden",
+      onClick: () => set$durationMode("custom"),
+    },
+    {
+      name: "Simple",
+      isActive: $durationMode() === "simple",
+      isDisabled: $props.info.durationInput === "required",
+      onClick: () => set$durationMode("simple"),
+    },
+  ]);
+
+  const [$speed, set$speed] = createSignal(1);
+  const $isSpeedValid = () => $speed() > 0;
+  const [$validDurationData, set$validDurationData] = createSignal(null);
+  const $validDuration = createMemo(() =>
+    match($durationMode())
+      .returnType<ProsodyGeneratorGenerateProsodyActionInputDuration | null>()
+      .with("simple", () =>
+        $isSpeedValid() ? ["simple", { speed: $speed() }] : null)
+      .with("custom", () =>
+        $validDurationData() ? ["custom", $validDurationData()!] : null)
+      .exhaustive()
+  );
+
+  const $areInputsValid = () => !!$validSegsData() && !!$validDuration();
+
+  const [$actionResult, set$actionResult] = createSignal<
+    FunctionalityActionResult<DurationPredictResult> | null | "processing"
+  >(null);
+
+  const generateProsody = useAction(prosodyGeneratorGenerateProsodyAction);
+
+  async function handleSubmit(ev: Event) {
+    ev.preventDefault();
+    if ($actionResult() === "processing") return;
+    if (!$areInputsValid()) return;
+    set$actionResult("processing");
+
+    set$actionResult(
+      await generateProsody($props.fqn, {
+        language: {
+          "iso639-3": $selectedLanguage()!,
+          segmentationFormat: $selectedSegFormat()!,
+        },
+        phonemeSegments: $validSegsData()!,
+        duration: $validDuration()!,
+      }),
+    );
+  }
+
+  return (
+    <div class={cls("card", $prefersDark() ? "bg-black" : "bg-white")}>
+      <div class="card-body">
+        <h2 class="card-title">
+          Manual Invocation: <code>generateProsody</code>
+        </h2>
+        <form onSubmit={handleSubmit}>
+          <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+            <legend class="fieldset-legend">Input</legend>
+            <div class="flex justify-between items-center">
+              <LanguageAndSegmentationSelector
+                selectedLanguage={$selectedLanguage()}
+                set$selectedLanguage={set$selectedLanguage}
+                supportedInputLanguages={$props.info.supportedInputLanguages}
+                selectedSegmentationFormat={$selectedSegFormat()}
+                set$selectedSegmentationFormat={set$selectedSegFormat}
+              />
+              <input
+                type="submit"
+                class="btn btn-primary"
+                disabled={!$areInputsValid()}
+              >
+                Submit
+              </input>
+            </div>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">
+                Phoneme Segments
+                <Show when={!$validSegsData()}>
+                  <span class="text-error text-xs italic">
+                    (*invalid)
+                  </span>
+                </Show>
+              </legend>
+              <JsonTextarea
+                placeholder="[…]"
+                set$validData={set$validSegsData}
+              />
+            </fieldset>
+            <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+              <legend class="fieldset-legend">Duration</legend>
+              <ButtonTabs tabs={$durationModeTabEntries} />
+              <Switch>
+                <Match when={$durationMode() === "custom"}>
+                  <fieldset class="fieldset">
+                    <legend class="fieldset-legend">
+                      Duration Prediction
+                      <Show when={!$validDurationData()}>
+                        <span class="text-error text-xs italic">
+                          (*invalid)
+                        </span>
+                      </Show>
+                    </legend>
+                    <JsonTextarea
+                      placeholder='{ "durationTicks2d": …, "ticksPerSecond": … }'
+                      set$validData={set$validDurationData}
+                    />
+                  </fieldset>
+                </Match>
+                <Match when={$durationMode() === "simple"}>
+                  <label class="floating-label">
+                    <span>
+                      Speed
+                      <Show when={!$isSpeedValid()}>
+                        <span class="text-error text-xs italic">
+                          (*invalid)
+                        </span>
+                      </Show>
+                    </span>
+                    <NumberInputThatCanBeFallbackToTextInput
+                      step={0.05}
+                      min={0}
+                      value={$speed()}
+                      set$value={set$speed}
+                    />
+                  </label>
+                </Match>
+              </Switch>
+            </fieldset>
+          </fieldset>
+        </form>
+        <Show when={$actionResult()}>
+          {($actionResult) => (
+            <>
+              <h3>Result:</h3>
+              <ActionJsonResultDisplayer actionResult={$actionResult()} />
+            </>
+          )}
+        </Show>
+      </div>
+    </div>
+  );
+};
+
+const LanguageAndSegmentationSelector: Component<{
+  selectedLanguage: string | null;
+  set$selectedLanguage: Setter<string | null>;
+  supportedInputLanguages: readonly LanguageSpecifierWithSegmentationFormat[];
+  selectedSegmentationFormat: string | null;
+  set$selectedSegmentationFormat: Setter<string | null>;
+}> = ($props) => {
+  const $selectableSegFormats = createMemo(() => {
+    const scripts = $props.supportedInputLanguages
+      .filter((lang) => lang["iso639-3"] === $props.selectedLanguage)
+      .map((lang) => lang.segmentationFormat);
+    return _.uniq(scripts);
+  });
+  createEffect(() => {
+    const first = $selectableSegFormats().at(0);
+    $props.set$selectedSegmentationFormat(first ?? null);
+  });
+
+  return (
+    <div class="flex gap-4">
+      <select
+        class="select select-sm w-fit"
+        onInput={(ev) => $props.set$selectedLanguage(ev.target.value)}
+      >
+        <option disabled selected={!$props.selectedLanguage}>
+          Language (ISO 639-3)
+        </option>
+        <For each={$props.supportedInputLanguages}>
+          {(lang) => (
+            <option
+              value={lang["iso639-3"]}
+              selected={$props.selectedLanguage === lang["iso639-3"]}
+            >
+              {lang["iso639-3"]}
+            </option>
+          )}
+        </For>
+      </select>
+      <Show when={$selectableSegFormats().length}>
+        <select
+          class="select select-sm w-fit"
+          onInput={(ev) =>
+            $props.set$selectedSegmentationFormat(ev.target.value)}
+        >
+          <option disabled>Segmentation Formats</option>
+          <For each={$selectableSegFormats()}>
+            {(segFormat) => (
+              <option
+                value={segFormat}
+                selected={$props.selectedSegmentationFormat === segFormat}
+              >
+                {segFormat}
+              </option>
+            )}
+          </For>
+        </select>
+      </Show>
+    </div>
+  );
+};
+
 const ActionJsonResultDisplayer: Component<{
   actionResult:
     | "processing"
     | ["error", "functionality_not_found"]
     | ["error", "functionality_type_mismatch", string]
     | ["error", "exception", { message: string; trace?: string }]
-    | ["ok", any];
+    | ["ok", ["error", ...any] | ["ok", any]];
 }> = ($props) => {
   return (
     <>
@@ -384,19 +806,78 @@ const ActionJsonResultDisplayer: Component<{
           () => "TODO: FUNCTIONALITY NOT FOUND",
         )
         .with(
-          ["error", "functionality_type_mismatch", P._],
-          ([_1, _2, t]) => <>TODO: FUNCTIONALITY TYPE MISMATCH: {t}</>,
+          ["error", "functionality_type_mismatch", P.select()],
+          (t) => <>TODO: FUNCTIONALITY TYPE MISMATCH: {t}</>,
         )
         .with(
-          ["error", "exception", P._],
-          ([_1, _2, { trace }]) => <>TODO: EXCEPTION: {trace}</>,
+          ["error", "exception", P.select()],
+          ({ trace }) => <>TODO: EXCEPTION: {trace}</>,
         )
         .with(
-          ["ok", P._],
-          ([_, result]) => <JsonViewer data={result} expand={"**"} />,
+          ["ok", ["error", ...P.array()]],
+          ([_1, [_2, ...rest]]) => (
+            <div role="alert" class="alert alert-error">
+              <VsError class="text-error-content" size={36} />
+              <ul>
+                <For each={rest}>
+                  {(thing) => (
+                    <li>
+                      <code>{JSON.stringify(thing)}</code>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+          ),
+        )
+        .with(
+          ["ok", ["ok", P.select()]],
+          (data) => <JsonDisplayer data={data} />,
         )
         .exhaustive()}
     </>
+  );
+};
+
+const JsonDisplayer: Component<{ data: any }> = ($props) => {
+  const TAB_NAMES = ["Text", "Viewer"] as const;
+
+  const [$selectedTab, set$selectedTab] = //
+    createSignal<typeof TAB_NAMES[number]>("Viewer");
+  const $tabEntries = createMemo<ButtonTabEntry[]>(() => {
+    return TAB_NAMES.map((name) => ({
+      name,
+      isActive: $selectedTab() === name,
+      onClick: () => set$selectedTab(name),
+    }));
+  });
+
+  const $dataJsonText = createMemo(() => JSON.stringify($props.data));
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText($dataJsonText());
+    toast.success("Copied to clipboard!");
+  }
+
+  return (
+    <div class="flex flex-col gap-2">
+      <div class="flex justify-between">
+        <button class="btn btn-sm btn-primary btn-ghost" onClick={handleCopy}>
+          Copy JSON
+        </button>
+        <ButtonTabs tabs={$tabEntries} />
+      </div>
+      <Switch>
+        <Match when={$selectedTab() === "Text"}>
+          <textarea class="textarea w-full h-48" disabled>
+            {$dataJsonText()}
+          </textarea>
+        </Match>
+        <Match when={$selectedTab() === "Viewer"}>
+          <JsonViewer data={$props.data} expand={"**"} />
+        </Match>
+      </Switch>
+    </div>
   );
 };
 

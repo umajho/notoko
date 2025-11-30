@@ -1,7 +1,7 @@
 import { createMemo } from "solid-js";
 import { type RouteSectionProps, useLocation } from "@solidjs/router";
 
-import { type TabEntry, Tabs } from "~/components/ui/rudimentary";
+import { type LinkTabEntry, LinkTabs } from "~/components/ui/rudimentary";
 
 export default function Layout($props: RouteSectionProps) {
   const location = useLocation();
@@ -19,7 +19,7 @@ export default function Layout($props: RouteSectionProps) {
     "Prosody-Generators": { href: "/runtime/prosody-generators" },
   };
 
-  const $tabEntries = createMemo<TabEntry[]>(() => {
+  const $tabEntries = createMemo<LinkTabEntry[]>(() => {
     return TAB_NAMES.map((name) => {
       const href = TAB_INFOS[name].href;
       const isInside = () => `${location.pathname}/`.startsWith(`${href}/`);
@@ -31,7 +31,7 @@ export default function Layout($props: RouteSectionProps) {
   return (
     <>
       <nav>
-        <Tabs tabs={$tabEntries} />
+        <LinkTabs tabs={$tabEntries} />
       </nav>
       {$props.children}
     </>

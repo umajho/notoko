@@ -1,5 +1,7 @@
 # Prototyping
 
+## `[fastspeech2]patches.1-CLI`
+
 1. clone <https://github.com/ming024/FastSpeech2/>.
 2. read FastSpeech2's README, follow the instruction to download the models for
    inference.
@@ -24,3 +26,7 @@
    uv run synthesize.py --text "要说的话" --duration_control=0.8 --copy-prosody-data-only \
      --speaker_id 1 --restore_step 600000 --mode single -p config/AISHELL3/preprocess.yaml -m config/AISHELL3/model.yaml -t config/AISHELL3/train.yaml
    ```
+
+## `[fastspeech2]patches.2-API_Server`
+
+This patch set is based on the previous one.

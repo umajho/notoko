@@ -19,14 +19,14 @@ export const MenuItemLink: Component<{ path: string; children: JSX.Element }> =
     );
   };
 
-export interface TabEntry {
+export interface LinkTabEntry {
   name: string;
   isActive: boolean;
   href: string;
 }
 
-export const Tabs: Component<{
-  tabs: () => TabEntry[];
+export const LinkTabs: Component<{
+  tabs: () => LinkTabEntry[];
 }> = ($props) => {
   return (
     <div role="tablist" class="tabs tabs-border">
@@ -39,6 +39,34 @@ export const Tabs: Component<{
           >
             {tab.name}
           </A>
+        )}
+      </For>
+    </div>
+  );
+};
+
+export interface ButtonTabEntry {
+  name: string;
+  isActive: boolean;
+  isDisabled?: boolean;
+  onClick: () => void;
+}
+
+export const ButtonTabs: Component<{
+  tabs: () => ButtonTabEntry[];
+}> = ($props) => {
+  return (
+    <div role="tablist" class="tabs tabs-border">
+      <For each={$props.tabs()}>
+        {(tab) => (
+          <button
+            role="tab"
+            class={cls("tab", tab.isActive && "tab-active")}
+            disabled={tab.isDisabled}
+            onClick={tab.onClick}
+          >
+            {tab.name}
+          </button>
         )}
       </For>
     </div>

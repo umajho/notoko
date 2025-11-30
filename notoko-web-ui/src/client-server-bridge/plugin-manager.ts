@@ -1,9 +1,12 @@
 import { action, query } from "@solidjs/router";
 
 import type {
+  DurationPrediction,
+  DurationPredictResult,
   Functionality,
   FunctionalityFqn,
   IsValidPhonemeResult,
+  PhonemeSegment,
   PhonemizeResult,
   Plugin,
   PluginId,
@@ -107,6 +110,12 @@ export const getFunctionalityInfo = query(
   "getFunctionalityInfo",
 );
 
+export type FunctionalityActionResult<T> =
+  | ["ok", T]
+  | ["error", "functionality_not_found"]
+  | ["error", "functionality_type_mismatch", Functionality["type"]]
+  | ["error", "exception", { message: string; trace?: string }];
+
 export type PhonemizerPhonemizeActionInput = {
   language: { "iso639-3": string; script: { "iso15924": string } };
   text: string;
@@ -114,11 +123,6 @@ export type PhonemizerPhonemizeActionInput = {
     outputSegmentationFormat: string;
   };
 };
-export type FunctionalityActionResult<T> =
-  | ["ok", T]
-  | ["error", "functionality_not_found"]
-  | ["error", "functionality_type_mismatch", Functionality["type"]]
-  | ["error", "exception", { message: string; trace?: string }];
 
 export const phonemizerPhonemizeAction = action(
   async (
@@ -186,6 +190,97 @@ export const phonemizerIsValidPhonemeAction = action(
           input.segmentationFormat,
           input.phoneme,
         ),
+      ];
+    } catch (e) {
+      return [
+        "error",
+        "exception",
+        {
+          message: String(e),
+          trace: (e instanceof Error) ? e.stack : undefined,
+        },
+      ];
+    }
+  },
+);
+
+export type DurationPredictorPredictDurationActionInput = {
+  language: { "iso639-3": string; segmentationFormat: string };
+  phonemeSegments: PhonemeSegment[];
+  options: { speed: number };
+};
+
+export const durationPredictorPredictDurationAction = action(
+  async (
+    fqn: FunctionalityFqn,
+    input: DurationPredictorPredictDurationActionInput,
+  ): Promise<FunctionalityActionResult<DurationPredictResult>> => {
+    "use server";
+
+    const pm = await getPluginManagerSingleton();
+    const accessor = pm.getFunctionalityAccessorFor(fqn);
+
+    const functionality = accessor();
+    if (!functionality) return ["error", "functionality_not_found"];
+    if (functionality.type !== "functionality:duration_predictor") {
+      return ["error", "functionality_type_mismatch", functionality.type];
+    }
+
+    try {
+      return [
+        "ok",
+        await functionality
+          .predictDuration(input.language, input.phonemeSegments, {
+            speed: input.options.speed,
+          }),
+      ];
+    } catch (e) {
+      return [
+        "error",
+        "exception",
+        {
+          message: String(e),
+          trace: (e instanceof Error) ? e.stack : undefined,
+        },
+      ];
+    }
+  },
+);
+
+export type ProsodyGeneratorGenerateProsodyActionInput = {
+  language: { "iso639-3": string; segmentationFormat: string };
+  phonemeSegments: PhonemeSegment[];
+  duration: ProsodyGeneratorGenerateProsodyActionInputDuration;
+};
+export type ProsodyGeneratorGenerateProsodyActionInputDuration =
+  | ["simple", { speed?: number }]
+  | ["custom", DurationPrediction];
+
+export const prosodyGeneratorGenerateProsodyAction = action(
+  async (
+    fqn: FunctionalityFqn,
+    input: ProsodyGeneratorGenerateProsodyActionInput,
+  ): Promise<FunctionalityActionResult<DurationPredictResult>> => {
+    "use server";
+
+    const pm = await getPluginManagerSingleton();
+    const accessor = pm.getFunctionalityAccessorFor(fqn);
+
+    const functionality = accessor();
+    if (!functionality) return ["error", "functionality_not_found"];
+    if (functionality.type !== "functionality:prosody_generator") {
+      return ["error", "functionality_type_mismatch", functionality.type];
+    }
+
+    try {
+      return [
+        "ok",
+        await functionality
+          .generateProsody(
+            input.language,
+            input.phonemeSegments,
+            input.duration,
+          ),
       ];
     } catch (e) {
       return [
