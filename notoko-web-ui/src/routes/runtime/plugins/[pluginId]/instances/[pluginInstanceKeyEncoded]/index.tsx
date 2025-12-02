@@ -1,6 +1,5 @@
 import {
   type Component,
-  createEffect,
   createMemo,
   createSignal,
   Match,
@@ -11,16 +10,17 @@ import { createAsync, useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { Title } from "@solidjs/meta";
 
-import { Jsfe } from "~/components/web-components/Jsfe";
-import { cls } from "~/utils/cls";
-import { makeTitle } from "~/utils/titles";
 import {
   makePluginInstanceFqn,
   type Plugin,
   PluginId,
   PluginInstanceKey,
   SINGLETON_PLUGIN_INSTANCE_KEY,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
+
+import { Jsfe } from "~/components/web-components/Jsfe";
+import { cls } from "~/utils/cls";
+import { makeTitle } from "~/utils/titles";
 import { bothNonNull, stringToNull } from "~/utils/misc";
 import {
   getPluginInfo,

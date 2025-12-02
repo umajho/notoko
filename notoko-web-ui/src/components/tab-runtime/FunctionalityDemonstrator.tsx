@@ -32,7 +32,8 @@ import {
   type PluginId,
   type PluginInstanceFunctionalityKey,
   type PluginInstanceKey,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
+
 import {
   durationPredictorPredictDurationAction,
   type FunctionalityActionResult,

@@ -4,14 +4,15 @@ import { match } from "ts-pattern";
 import { addDict, pinyin } from "pinyin-pro";
 import CompleteDict from "@pinyin-pro/data/complete";
 
-import fastspeech2PinyinRDataCsv from "./data/fastspeech2-pinyin-r/processed.csv?raw";
+import fastspeech2PinyinRDataCsv from //
+"./data/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
 
 import type {
   IsValidPhonemeResult,
   LanguageSpecifierWithScript,
   PhonemeSegment,
   PhonemizeResult,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
 
 addDict(CompleteDict);
 

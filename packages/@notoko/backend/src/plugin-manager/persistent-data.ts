@@ -1,12 +1,6 @@
 import FS from "node:fs";
 
-import {
-  type Accessor,
-  batch,
-  createSignal,
-  type Setter,
-  untrack,
-} from "solid-js";
+import { type Accessor, createSignal, type Setter, untrack } from "solid-js";
 
 import {
   DATA_PLUGIN_DATA_PATH,
@@ -14,7 +8,7 @@ import {
   PluginId,
   PluginInstanceFqn,
   PluginInstanceKey,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
 
 interface Entry {
   $staticConfiguration: Accessor<object>;

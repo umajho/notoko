@@ -8,7 +8,7 @@ import {
   type Plugin,
   PluginInstanceFunctionalityKey,
   ProsodyData,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
 
 const StaticConfiguration = z.object({
   entrypointUrl: z.url(),

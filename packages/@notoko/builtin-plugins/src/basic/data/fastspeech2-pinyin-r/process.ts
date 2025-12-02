@@ -38,4 +38,4 @@ for (const line of input.split("\n")) {
   seen.add(full);
 }
 
-process.stdout.write(resultCsv.trim());
+process.stdout.write(JSON.stringify(resultCsv.trim()));

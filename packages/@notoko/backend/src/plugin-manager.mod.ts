@@ -12,7 +12,7 @@ import {
   PluginInstanceKey,
   type PluginStatus,
   SINGLETON_PLUGIN_INSTANCE_KEY,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
 
 import {
   createRuntimeData,
@@ -218,14 +218,5 @@ function createContext(
   };
 }
 
-/**
- * XXX: I don't know why, but if I store the singleton in a module-level
- * variable, the instance returned by this function becomes different between
- * `entry-server.tsx` and other places.
- */
-export function getPluginManagerSingleton(): PluginManager {
-  // @ts-ignore
-  return globalThis.pluginManagerSingleton ??= makePluginManager();
-}
-
+export { makePluginManager };
 export type PluginManager = ReturnType<typeof makePluginManager>;

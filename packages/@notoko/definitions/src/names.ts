@@ -3,7 +3,7 @@ import {
   urlDecodeFromSafePathSegment,
   UrlEncodedSafePathSegment,
   urlEncodeToSafePathSegment,
-} from "~/utils/path-segment-url-encoding";
+} from "@notoko/utils/path-segment-url-encoding";
 
 /**
  * “File Stem Safe” means that the ID can be safely used as a file's stem part.

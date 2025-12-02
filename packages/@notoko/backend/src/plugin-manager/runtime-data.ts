@@ -12,8 +12,8 @@ import {
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   type PluginStatus,
-} from "~/definitions.mod";
-import { urlEncodeToSafePathSegment } from "~/utils/path-segment-url-encoding";
+} from "@notoko/definitions";
+import { urlEncodeToSafePathSegment } from "@notoko/utils/path-segment-url-encoding";
 
 /**
  * NOTE: `*TreeNode` and `*Tree` are historical names for the tree-based plugin

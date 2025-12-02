@@ -13,7 +13,7 @@ catalogs:
       specifier: ^0.4.0
       version: 0.4.0
     '@pinyin-pro/data':
-      specifier: ^1.2.0
+      specifier: 1.2.0
       version: 1.2.0
     '@shoelace-style/shoelace':
       specifier: ^2.20.1
@@ -37,22 +37,22 @@ catalogs:
       specifier: ^4.0.7
       version: 4.1.17
     '@types/node':
-      specifier: ^24.10.1
+      specifier: 24.10.1
       version: 24.10.1
     daisyui:
       specifier: ^5.5.5
       version: 5.5.5
     es-toolkit:
-      specifier: ^1.42.0
+      specifier: 1.42.0
       version: 1.42.0
     pinyin-pro:
-      specifier: ^3.27.0
+      specifier: 3.27.0
       version: 3.27.0
     solid-icons:
       specifier: ^1.1.0
       version: 1.1.0
     solid-js:
-      specifier: ^1.9.5
+      specifier: 1.9.10
       version: 1.9.10
     solid-sonner:
       specifier: ^0.2.8
@@ -61,16 +61,16 @@ catalogs:
       specifier: ^4.0.7
       version: 4.1.17
     ts-pattern:
-      specifier: ^5.9.0
+      specifier: 5.9.0
       version: 5.9.0
     vinxi:
       specifier: ^0.5.7
       version: 0.5.8
     vitest:
-      specifier: ^4.0.14
+      specifier: 4.0.14
       version: 4.0.14
     zod:
-      specifier: ^4.1.12
+      specifier: 4.1.13
       version: 4.1.13
 
 importers:
@@ -85,9 +85,18 @@ importers:
       '@jsfe/shoelace':
         specifier: 'catalog:'
         version: 0.4.0(@shoelace-style/shoelace@2.20.1(@floating-ui/utils@0.2.10)(@types/react@19.2.7))(lit@3.3.1)
-      '@pinyin-pro/data':
-        specifier: 'catalog:'
-        version: 1.2.0
+      '@notoko/backend':
+        specifier: workspace:*
+        version: link:../packages/@notoko/backend
+      '@notoko/builtin-plugins':
+        specifier: workspace:*
+        version: link:../packages/@notoko/builtin-plugins
+      '@notoko/definitions':
+        specifier: workspace:*
+        version: link:../packages/@notoko/definitions
+      '@notoko/utils':
+        specifier: workspace:*
+        version: link:../packages/@notoko/utils
       '@shoelace-style/shoelace':
         specifier: 'catalog:'
         version: 2.20.1(@floating-ui/utils@0.2.10)(@types/react@19.2.7)
@@ -106,9 +115,6 @@ importers:
       es-toolkit:
         specifier: 'catalog:'
         version: 1.42.0
-      pinyin-pro:
-        specifier: 'catalog:'
-        version: 3.27.0
       solid-icons:
         specifier: 'catalog:'
         version: 1.1.0(solid-js@1.9.10)
@@ -124,9 +130,6 @@ importers:
       vinxi:
         specifier: 'catalog:'
         version: 0.5.8(@types/node@24.10.1)(db0@0.3.4)(ioredis@5.8.2)(jiti@2.6.1)(lightningcss@1.30.2)(rolldown@1.0.0-beta.50)(terser@5.44.1)
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
     devDependencies:
       '@tailwindcss/typography':
         specifier: 'catalog:'
@@ -143,9 +146,68 @@ importers:
       tailwindcss:
         specifier: 'catalog:'
         version: 4.1.17
+
+  packages/@notoko/backend:
+    dependencies:
+      '@notoko/definitions':
+        specifier: workspace:*
+        version: link:../definitions
+      '@notoko/utils':
+        specifier: workspace:*
+        version: link:../utils
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.42.0
+      solid-js:
+        specifier: 'catalog:'
+        version: 1.9.10
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.10.1
+
+  packages/@notoko/builtin-plugins:
+    dependencies:
+      '@notoko/definitions':
+        specifier: workspace:*
+        version: link:../definitions
+      '@pinyin-pro/data':
+        specifier: 'catalog:'
+        version: 1.2.0
+      pinyin-pro:
+        specifier: 'catalog:'
+        version: 3.27.0
+      ts-pattern:
+        specifier: 'catalog:'
+        version: 5.9.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.10.1
       vitest:
         specifier: 'catalog:'
         version: 4.0.14(@types/node@24.10.1)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)
+
+  packages/@notoko/definitions:
+    dependencies:
+      '@notoko/utils':
+        specifier: workspace:*
+        version: link:../utils
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+
+  packages/@notoko/utils:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
 
 packages:
 

@@ -15,7 +15,6 @@ import {
 } from "@solidjs/router";
 import { VsError, VsLoading, VsUnverified } from "solid-icons/vs";
 
-import { cls } from "~/utils/cls";
 import {
   extractPluginInstanceFunctionalityKeyFromFqn,
   type Functionality,
@@ -25,7 +24,14 @@ import {
   PluginInstanceKey,
   type PluginStatus,
   SINGLETON_PLUGIN_INSTANCE_KEY,
-} from "~/definitions.mod";
+} from "@notoko/definitions";
+import {
+  urlDecodeFromSafePathSegment,
+  UrlEncodedSafePathSegment,
+  urlEncodeToSafePathSegment,
+} from "@notoko/utils/path-segment-url-encoding";
+
+import { cls } from "~/utils/cls";
 import { stringToNull } from "~/utils/misc";
 import {
   gePluginIds,
@@ -34,11 +40,6 @@ import {
   getPluginInstanceKeys,
   getPluginInstanceStatus,
 } from "~/client-server-bridge/plugin-manager";
-import {
-  urlDecodeFromSafePathSegment,
-  UrlEncodedSafePathSegment,
-  urlEncodeToSafePathSegment,
-} from "~/utils/path-segment-url-encoding";
 import { LoadingSpan } from "~/components/ui/rudimentary";
 import { getFunctionalityTypeDisplayName } from "~/components/tab-runtime/FunctionalityDemonstrator";
 

@@ -1,0 +1,14 @@
+{
+  "name": "@notoko/utils",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./path-segment-url-encoding": {
+      "import": "./src/path-segment-url-encoding.ts",
+      "types": "./src/path-segment-url-encoding.ts"
+    }
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}

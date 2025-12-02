@@ -1,6 +1,9 @@
 import * as z from "zod/v4";
 
-import { type Plugin, PluginInstanceFunctionalityKey } from "~/definitions.mod";
+import {
+  type Plugin,
+  PluginInstanceFunctionalityKey,
+} from "@notoko/definitions";
 
 import * as langCmn from "./basic/lang-cmn";
 

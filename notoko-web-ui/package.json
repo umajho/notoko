@@ -4,33 +4,32 @@
   "scripts": {
     "dev": "vinxi dev",
     "build": "vinxi build",
-    "start": "vinxi start --host 127.0.0.1",
-    "test": "vitest run"
+    "start": "vinxi start --host 127.0.0.1"
   },
   "dependencies": {
     "@alenaksu/json-viewer": "catalog:",
     "@jsfe/shoelace": "catalog:",
-    "@pinyin-pro/data": "catalog:",
+    "@notoko/backend": "workspace:*",
+    "@notoko/builtin-plugins": "workspace:*",
+    "@notoko/definitions": "workspace:*",
+    "@notoko/utils": "workspace:*",
     "@shoelace-style/shoelace": "catalog:",
     "@solid-primitives/media": "catalog:",
     "@solidjs/meta": "catalog:",
     "@solidjs/router": "catalog:",
     "@solidjs/start": "catalog:",
     "es-toolkit": "catalog:",
-    "pinyin-pro": "catalog:",
     "solid-icons": "catalog:",
     "solid-js": "catalog:",
     "solid-sonner": "catalog:",
     "ts-pattern": "catalog:",
-    "vinxi": "catalog:",
-    "zod": "catalog:"
+    "vinxi": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/typography": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "daisyui": "catalog:",
-    "tailwindcss": "catalog:",
-    "vitest": "catalog:"
+    "tailwindcss": "catalog:"
   }
 }

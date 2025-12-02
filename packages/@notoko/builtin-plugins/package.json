@@ -1,0 +1,21 @@
+{
+  "name": "@notoko/builtin-plugins",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "main": "lib.ts",
+  "types": "lib.ts",
+  "dependencies": {
+    "@notoko/definitions": "workspace:*",
+    "@pinyin-pro/data": "catalog:",
+    "pinyin-pro": "catalog:",
+    "ts-pattern": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  }
+}

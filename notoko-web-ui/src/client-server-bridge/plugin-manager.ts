@@ -12,15 +12,15 @@ import type {
   PluginId,
   PluginInstanceKey,
   PluginStatus,
-} from "~/definitions.mod";
-import type { PluginManager } from "~/server/plugin-manager.mod";
+} from "@notoko/definitions";
+import type { PluginManager } from "@notoko/backend";
 
-async function getPluginManagerSingleton(): Promise<PluginManager> {
-  "use server";
-
-  const { getPluginManagerSingleton } = //
-    await import("~/server/plugin-manager.mod");
-  return getPluginManagerSingleton();
+export async function getPluginManagerSingleton(): Promise<PluginManager> {
+  // @ts-ignore
+  return globalThis.pluginManagerSingleton ??= await (async () => {
+    const { makePluginManager } = await import("@notoko/backend");
+    return makePluginManager();
+  })();
 }
 
 export const gePluginIds = query(async () => {

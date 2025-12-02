@@ -1,0 +1,2 @@
+process:
+  node ./process.ts < pinyin-lexicon-r.txt > processed.csv.json
