@@ -13,10 +13,10 @@
 
    > [!CAUTION]
    >
-   > The works are mostly done by LLMs (GitHub Copilot Agent Mode) with
-   > instructions from a person who had little understanding on the topic.
-   > Personally, I disapprove of building further works on top of these patches
-   > directly except for prototyping.
+   > The works are mostly done by LLMs (GitHub Copilot Agent Mode), and the
+   > person who instructed them had little understanding on the topic. They are
+   > very sloppy. I disapprove of building real-world solutions from these
+   > patches.
 
 5. troubleshhot. It works on my machine, but I'm not sure had I (GitHub Copilot,
    actually) made changes that would break on other platforms…
@@ -29,4 +29,7 @@
 
 ## `[fastspeech2]patches.2-API_Server`
 
-This patch set is based on the previous one.
+This patch set should be applied on top of
+[the previous one](#fastspeech2patches1-cli).
+
+Run the API server: `uv run api-server.py`.
