@@ -10,6 +10,25 @@ to enable Software-Talk characters — who do not natively speak Mandarin — to
 speak Mandarin in videos I (will) produce, using methods that are both legal and
 ethical (See the FAQ section below for details.).
 
+## Setup
+
+- This project requires a modern version of [`node`] (see [`.nvmrc`](./.nvmrc)).
+  - If you have [`nvm`] installed:
+    - You can run `nvm use` every time you open a new terminal inside this
+      project's directory to ensure the correct Node.js version is used.
+    - Alternatively, you can default your `node` to a modern version
+      (`nvm alias default <…>`). If you use VS Code, you may need to add
+      `"terminal.integrated.inheritEnv": false` in your VSCode User Settings,
+      otherwise VS Code may still pick up an older version when it launches a
+      new integrated terminal. See:
+      <https://stackoverflow.com/a/59443505/31276438>.
+- This project relies on [`pnpm`].
+- Stuffs under `prototyping/` have their own instructions on how to set them up.
+
+[`node`]: https://nodejs.org/
+[`nvm`]: https://github.com/nvm-sh/nvm
+[`pnpm`]: https://pnpm.io/
+
 ## FAQ
 
 ### Where is the name “Notoko” from?
