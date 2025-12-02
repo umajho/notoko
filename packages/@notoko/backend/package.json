@@ -10,8 +10,8 @@
   "dependencies": {
     "@notoko/definitions": "workspace:*",
     "@notoko/utils": "workspace:*",
+    "alien-signals": "catalog:",
     "es-toolkit": "catalog:",
-    "solid-js": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

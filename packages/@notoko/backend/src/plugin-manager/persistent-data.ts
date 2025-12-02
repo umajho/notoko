@@ -1,6 +1,6 @@
 import FS from "node:fs";
 
-import { type Accessor, createSignal, type Setter, untrack } from "solid-js";
+import { effect, signal } from "alien-signals";
 
 import {
   DATA_PLUGIN_DATA_PATH,
@@ -9,10 +9,10 @@ import {
   PluginInstanceFqn,
   PluginInstanceKey,
 } from "@notoko/definitions";
+import { untrack } from "@notoko/utils/alien-signals";
 
 interface Entry {
-  $staticConfiguration: Accessor<object>;
-  set$staticConfiguration: Setter<object>;
+  $staticConfiguration: ReturnType<typeof signal<object>>;
   addStaticConfigurationChangeHandler: (
     cb: (config: object) => void,
   ) => { remove: () => void };
@@ -41,36 +41,28 @@ export class PersistentDataManager {
       staticConfiguration = opts.defaultStaticConfiguration;
     }
 
-    const [$staticConfiguration, set$staticConfiguration_] = //
-      createSignal<object>(staticConfiguration!);
+    const $staticConfiguration = signal<object>(staticConfiguration!);
     const staticConfigurationChangeCallbacks = //
       new Set<(config: object) => void>();
-
-    const set$staticConfiguration = new Proxy(set$staticConfiguration_, {
-      apply: (target, thisArg, args) => {
-        FS.writeFileSync(path, JSON.stringify(args[0]), "utf-8");
-        Reflect.apply(target, thisArg, args);
-        for (const cb of staticConfigurationChangeCallbacks) {
-          cb(args[0]);
-        }
-      },
+    effect(() => {
+      const staticConfig = $staticConfiguration();
+      FS.writeFileSync(path, JSON.stringify(staticConfig), "utf-8");
+      for (const cb of staticConfigurationChangeCallbacks) {
+        cb(staticConfig);
+      }
     });
 
     function addStaticConfigurationChangeHandler(
       cb: (config: object) => void,
     ) {
       staticConfigurationChangeCallbacks.add(cb);
-      cb(untrack($staticConfiguration));
+      cb(untrack(() => $staticConfiguration()));
       return {
         remove: () => staticConfigurationChangeCallbacks.delete(cb),
       };
     }
 
-    return {
-      $staticConfiguration,
-      set$staticConfiguration,
-      addStaticConfigurationChangeHandler,
-    };
+    return { $staticConfiguration, addStaticConfigurationChangeHandler };
   }
 
   initializeInstance(
@@ -93,10 +85,10 @@ export class PersistentDataManager {
   getInstanceStaticConfigurationAccessor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<object> {
+  ): () => object {
     const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
     const entry = this.instances[Fqn]!;
-    return entry.$staticConfiguration;
+    return () => entry.$staticConfiguration();
   }
 
   addInstanceStaticConfigurationChangeHandler(
@@ -116,7 +108,7 @@ export class PersistentDataManager {
   ) {
     const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
     const entry = this.instances[Fqn]!;
-    entry.set$staticConfiguration(value);
+    entry.$staticConfiguration(value);
   }
 
   static #getStaticConfigurationFilePath(

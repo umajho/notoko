@@ -1,8 +1,6 @@
 import * as z from "zod/v4";
 import * as _ from "es-toolkit";
 
-import { type SetStoreFunction } from "solid-js/store";
-
 import {
   type Functionality,
   type Plugin,
@@ -19,6 +17,7 @@ import {
   type RuntimeTreeNode,
 } from "./plugin-manager/runtime-data";
 import { PersistentDataManager } from "./plugin-manager/persistent-data";
+import { untrack } from "@notoko/utils/alien-signals";
 
 export type RegisterPluginErrorContent =
   | ["id_conflict", { conflictedId: PluginId }]
@@ -29,7 +28,6 @@ function makePluginManager() {
 
   const {
     $runtimeTree,
-    set$runtimeTree,
     $pluginIds,
     $infos,
     $instanceKeys,
@@ -49,7 +47,7 @@ function makePluginManager() {
     const errors: RegisterPluginErrorContent[] = [];
 
     for (const [id, node] of Object.entries(pluginMap)) {
-      if (id in $runtimeTree) throw new Error("TODO: handle id conflict.");
+      if (id in $runtimeTree()) throw new Error("TODO: handle id conflict.");
       switch (node.type) {
         case "plugin:singleton": {
           const idResult = PluginId.safeParse(id);
@@ -66,7 +64,6 @@ function makePluginManager() {
 
           const { context, changeStaticConfiguration, requestRefresh } =
             createContext(pluginId, SINGLETON_PLUGIN_INSTANCE_KEY, {
-              set$runtimeTree,
               set$functionalitiesFor,
               set$statusFor,
             });
@@ -88,7 +85,10 @@ function makePluginManager() {
               staticConfigurationChangeHandlerHandle.remove();
             },
           };
-          set$runtimeTree(pluginId, rtmNode);
+          $runtimeTree({
+            ...untrack(() => $runtimeTree()),
+            [pluginId]: rtmNode,
+          });
           set$statusFor(
             pluginId,
             SINGLETON_PLUGIN_INSTANCE_KEY,
@@ -138,8 +138,6 @@ function createContext(
   pluginId: PluginId,
   instanceKey: PluginInstanceKey,
   opts: {
-    set$runtimeTree: //
-      SetStoreFunction<Record<PluginId, RuntimeTreeNode>>;
     set$functionalitiesFor: (
       pluginId: PluginId,
       instanceKey: PluginInstanceKey,
