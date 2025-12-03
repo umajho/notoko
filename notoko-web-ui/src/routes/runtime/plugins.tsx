@@ -1,6 +1,5 @@
 import {
   type Component,
-  createEffect,
   createMemo,
   For,
   type JSX,
@@ -124,7 +123,6 @@ const PluginItem: Component<{
   const $instanceKeys = createMemo(() =>
     lqClient.queryPluginInstanceKeys($props.pluginId)()
   );
-  createEffect(() => console.log($instanceKeys()));
 
   const $isActive = () => $props.selectedPluginId === $props.pluginId;
 
