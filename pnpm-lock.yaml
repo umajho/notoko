@@ -121,6 +121,9 @@ importers:
       vinxi:
         specifier: 'catalog:'
         version: 0.5.8(@types/node@24.10.1)(db0@0.3.4)(ioredis@5.8.2)(jiti@2.6.1)(lightningcss@1.30.2)(rolldown@1.0.0-beta.50)(terser@5.44.1)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@tailwindcss/typography':
         specifier: 'catalog:'

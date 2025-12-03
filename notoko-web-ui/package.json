@@ -23,7 +23,8 @@
     "solid-js": "catalog:",
     "solid-sonner": "catalog:",
     "ts-pattern": "catalog:",
-    "vinxi": "catalog:"
+    "vinxi": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/typography": "catalog:",
