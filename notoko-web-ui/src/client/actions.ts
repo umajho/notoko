@@ -1,4 +1,4 @@
-import { action, query } from "@solidjs/router";
+import { action } from "@solidjs/router";
 
 import type {
   DurationPrediction,
@@ -8,85 +8,20 @@ import type {
   IsValidPhonemeResult,
   PhonemeSegment,
   PhonemizeResult,
-  Plugin,
   PluginId,
   PluginInstanceKey,
-  PluginStatus,
 } from "@notoko/definitions";
 import type { PluginManager } from "@notoko/backend";
 
-export async function getPluginManagerSingleton(): Promise<PluginManager> {
+async function getPluginManagerSingleton(): Promise<PluginManager> {
+  "use server";
+
   // @ts-ignore
   return globalThis.pluginManagerSingleton ??= await (async () => {
-    const { makePluginManager } = await import("@notoko/backend");
-    return makePluginManager();
+    const { getPluginManagerSingleton } = await import("~/server/singletons");
+    return getPluginManagerSingleton();
   })();
 }
-
-export const gePluginIds = query(async () => {
-  "use server";
-
-  const pm = await getPluginManagerSingleton();
-  return pm.$pluginIds();
-}, "gePluginIds");
-
-export const getPluginInfo = query(
-  async (pluginId: PluginId): Promise<Plugin["info"] | "not_found"> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const infos = pm.$infos();
-    return infos[pluginId] ?? "not_found";
-  },
-  "getPluginInfo",
-);
-
-export const getPluginInstanceKeys = query(async (pluginId: PluginId) => {
-  "use server";
-
-  const pm = await getPluginManagerSingleton();
-  const pluginToInstanceKeysMap = pm.$instanceKeys();
-  return pluginToInstanceKeysMap[pluginId as any] ?? null;
-}, "getPluginInstanceKeys");
-
-export const getPluginInstanceStatus = query(
-  async (
-    pluginId: PluginId,
-    instanceKey: PluginInstanceKey,
-  ): Promise<PluginStatus | "unknown"> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getStatusAccessorFor(pluginId, instanceKey);
-    return accessor();
-  },
-  "getPluginInstanceStatus",
-);
-
-export const getPluginInstanceFunctionalityInfos = query(
-  async (pluginId: PluginId, instanceKey: PluginInstanceKey) => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityInfosAccessorFor(pluginId, instanceKey);
-    return accessor();
-  },
-  "getPluginInstanceFunctionalities",
-);
-
-export const getPluginInstanceStaticConfiguration = query(
-  async (pluginId: PluginId, instanceKey: PluginInstanceKey) => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getStaticConfigurationAccessorFor(
-      pluginId,
-      instanceKey,
-    );
-    return accessor();
-  },
-  "getPluginInstanceStaticConfiguration",
-);
 
 export const setPluginInstanceStaticConfigurationAction = action(
   async (pluginId: PluginId, instanceKey: PluginInstanceKey, newData: any) => {
@@ -95,19 +30,6 @@ export const setPluginInstanceStaticConfigurationAction = action(
     const pm = await getPluginManagerSingleton();
     pm.setStaticConfigurationFor(pluginId, instanceKey, newData);
   },
-);
-
-export const getFunctionalityInfo = query(
-  async (
-    fqn: FunctionalityFqn,
-  ): Promise<Functionality["info"] | "not_found"> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityAccessorFor(fqn);
-    return accessor()?.info ?? "not_found";
-  },
-  "getFunctionalityInfo",
 );
 
 export type FunctionalityActionResult<T> =

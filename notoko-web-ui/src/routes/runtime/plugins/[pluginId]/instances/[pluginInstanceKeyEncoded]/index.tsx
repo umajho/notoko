@@ -22,14 +22,10 @@ import { Jsfe } from "~/components/web-components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
 import { bothNonNull, stringToNull } from "~/utils/misc";
-import {
-  getPluginInfo,
-  getPluginInstanceStaticConfiguration,
-  getPluginInstanceStatus,
-  setPluginInstanceStaticConfigurationAction,
-} from "~/client-server-bridge/plugin-manager";
 import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
 import { LoadingSpan } from "~/components/ui/rudimentary";
+import { getLiveQueryingClientSingleton } from "~/client/singletons";
+import { setPluginInstanceStaticConfigurationAction } from "~/client/actions";
 
 export default (() => {
   const {
@@ -61,10 +57,8 @@ const MainContent: Component<{
   pluginId: PluginId;
   pluginInstanceKey: PluginInstanceKey;
 }> = ($props) => {
-  const $info = createAsync<Plugin["info"] | "not_found" | "loading">(
-    () => getPluginInfo($props.pluginId),
-    { initialValue: "loading" },
-  );
+  const lqClient = getLiveQueryingClientSingleton();
+  const $info = createMemo(() => lqClient.queryPluginInfo($props.pluginId)());
 
   return (
     <Switch>
@@ -93,15 +87,17 @@ const MainContentReady: Component<{
   info: Plugin["info"];
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
+  const lqClient = getLiveQueryingClientSingleton();
 
   const $fqn = createMemo(() =>
     makePluginInstanceFqn($props.pluginId, $props.pluginInstanceKey)
   );
 
-  const $status = createAsync(
-    () =>
-      getPluginInstanceStatus($props.pluginId, SINGLETON_PLUGIN_INSTANCE_KEY),
-    { initialValue: "unknown" },
+  const $status = createMemo(() =>
+    lqClient.queryPluginInstanceStatus(
+      $props.pluginId,
+      $props.pluginInstanceKey,
+    )()
   );
 
   const $staticConfigJsonSchema = createMemo(() => {
@@ -115,13 +111,11 @@ const MainContentReady: Component<{
         throw new Error("unreachable!");
     }
   });
-  const $staticConfigData = createAsync(
-    () =>
-      getPluginInstanceStaticConfiguration(
-        $props.pluginId,
-        SINGLETON_PLUGIN_INSTANCE_KEY,
-      ),
-    { initialValue: null },
+  const $staticConfigData = createMemo(() =>
+    lqClient.queryPluginInstanceStaticConfiguration(
+      $props.pluginId,
+      $props.pluginInstanceKey,
+    )()
   );
 
   const [$hasUnsavedChanges, set$hasUnsavedChanges] = createSignal(false);
@@ -166,7 +160,10 @@ const MainContentReady: Component<{
             </Show>
           </h2>
           <Show
-            when={bothNonNull($staticConfigJsonSchema(), $staticConfigData())}
+            when={bothNonNull(
+              $staticConfigJsonSchema(),
+              stringToNull($staticConfigData()),
+            )}
             fallback={<LoadingSpan class="mx-auto" size="xl" />}
           >
             {($both) => (

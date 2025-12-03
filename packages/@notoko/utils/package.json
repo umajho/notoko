@@ -6,9 +6,14 @@
     "./path-segment-url-encoding": {
       "import": "./src/path-segment-url-encoding.ts",
       "types": "./src/path-segment-url-encoding.ts"
+    },
+    "./alien-signals": {
+      "import": "./src/alien-signals.ts",
+      "types": "./src/alien-signals.ts"
     }
   },
   "dependencies": {
+    "alien-signals": "catalog:",
     "zod": "catalog:"
   }
 }

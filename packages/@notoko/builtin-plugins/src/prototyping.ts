@@ -68,12 +68,13 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
     ctx.onChangeStaticConfiguration = async (cfg: any) => {
       ctx.setStatus("loading");
       ctx.setFunctionalities({});
-      entrypoint = (() => {
-        const url = cfg.entrypointUrl;
-        return new URL(url + (url.endsWith("/") ? "" : "/"));
-      })();
 
       try {
+        entrypoint = (() => {
+          const url = cfg.entrypointUrl;
+          return new URL(url + (url.endsWith("/") ? "" : "/"));
+        })();
+
         const resp = await fetch(new URL("info", entrypoint));
         info = JsonApiServerGetInfoResponse.parse(await resp.json());
         ctx.setStatus("ready");

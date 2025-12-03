@@ -8,5 +8,14 @@ export default defineConfig({
   ssr: false,
   server: {
     esbuild: { options: { target: "esnext" } },
+    experimental: {
+      websocket: true,
+    },
   },
+}).addRouter({
+  name: "live-querying",
+  type: "http",
+  handler: "./src/server/live-querying.ts",
+  target: "server",
+  base: "/live-querying.ws",
 });

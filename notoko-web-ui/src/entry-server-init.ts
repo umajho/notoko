@@ -4,14 +4,14 @@ import { FOLDER_PATHS_SHOULD_BE_CREATED } from "@notoko/definitions";
 
 import { builtinPlugins } from "@notoko/builtin-plugins";
 
-import { getPluginManagerSingleton } from "./client-server-bridge/plugin-manager";
+import { getPluginManagerSingleton } from "./server/singletons";
 
 async function init() {
   for (const path of FOLDER_PATHS_SHOULD_BE_CREATED) {
     await FSP.mkdir(path, { recursive: true });
   }
 
-  const pluginManagerSingleton = await getPluginManagerSingleton();
+  const pluginManagerSingleton = getPluginManagerSingleton();
   pluginManagerSingleton.registerPlugin(builtinPlugins);
 }
 

@@ -13,7 +13,7 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { createAsync, useAction } from "@solidjs/router";
+import { useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { VsArrowRight, VsError } from "solid-icons/vs";
 import { toast } from "solid-sonner";
@@ -34,22 +34,23 @@ import {
   type PluginInstanceKey,
 } from "@notoko/definitions";
 
+import { stringToNull, tryExtract } from "~/utils/misc";
+import { cls } from "~/utils/cls";
+import { getLiveQueryingClientSingleton } from "~/client/singletons";
 import {
   durationPredictorPredictDurationAction,
   type FunctionalityActionResult,
-  getFunctionalityInfo,
   phonemizerIsValidPhonemeAction,
   phonemizerPhonemizeAction,
   prosodyGeneratorGenerateProsodyAction,
   type ProsodyGeneratorGenerateProsodyActionInputDuration,
-} from "~/client-server-bridge/plugin-manager";
+} from "~/client/actions";
+
 import {
   type ButtonTabEntry,
   ButtonTabs,
   LoadingSpan,
 } from "../ui/rudimentary";
-import { stringToNull, tryExtract } from "~/utils/misc";
-import { cls } from "~/utils/cls";
 import { JsonViewer } from "../web-components/JsonViewer";
 import {
   JsonTextarea,
@@ -64,6 +65,8 @@ export const FunctionalityDemonstrator: Component<{
   // so pass the title out to let the parent set it instead.
   set$title: Setter<string>;
 }> = ($props) => {
+  const lqClient = getLiveQueryingClientSingleton();
+
   const $fqn = () =>
     makeFunctionalityFqn(
       $props.pluginId,
@@ -71,10 +74,7 @@ export const FunctionalityDemonstrator: Component<{
       $props.pluginInstanceFunctionalityKey,
     );
 
-  const $info = createAsync<Functionality["info"] | "not_found" | "loading">(
-    () => getFunctionalityInfo($fqn()),
-    { initialValue: "loading" },
-  );
+  const $info = createMemo(() => lqClient.queryFunctionalityInfo($fqn())());
 
   const p = "functionality:";
   function tryExtractPhonemizer(

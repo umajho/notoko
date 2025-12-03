@@ -1,18 +1,13 @@
 import {
   type Component,
+  createEffect,
   createMemo,
   For,
   type JSX,
   Match,
-  Show,
   Switch,
 } from "solid-js";
-import {
-  A,
-  createAsync,
-  type RouteSectionProps,
-  useParams,
-} from "@solidjs/router";
+import { A, type RouteSectionProps, useParams } from "@solidjs/router";
 import { VsError, VsLoading, VsUnverified } from "solid-icons/vs";
 
 import {
@@ -22,7 +17,6 @@ import {
   PluginId,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
-  type PluginStatus,
   SINGLETON_PLUGIN_INSTANCE_KEY,
 } from "@notoko/definitions";
 import {
@@ -33,15 +27,9 @@ import {
 
 import { cls } from "~/utils/cls";
 import { stringToNull } from "~/utils/misc";
-import {
-  gePluginIds,
-  getPluginInfo,
-  getPluginInstanceFunctionalityInfos,
-  getPluginInstanceKeys,
-  getPluginInstanceStatus,
-} from "~/client-server-bridge/plugin-manager";
 import { LoadingSpan } from "~/components/ui/rudimentary";
 import { getFunctionalityTypeDisplayName } from "~/components/tab-runtime/FunctionalityDemonstrator";
+import { getLiveQueryingClientSingleton } from "~/client/singletons";
 
 export function useRuntimePagePluginsTabParams() {
   const params = useParams();
@@ -87,28 +75,39 @@ export default function Layout($props: RouteSectionProps) {
 }
 
 const Sidebar: Component<{}> = () => {
+  const lqClient = getLiveQueryingClientSingleton();
+
   const {
     $selectedPluginId,
     $selectedPluginInstanceKey,
     $selectedPluginInstanceFunctionalityKey,
   } = useRuntimePagePluginsTabParams();
 
-  const $PluginIds = createAsync(() => gePluginIds());
+  const $pluginIds = lqClient.queryPluginIds();
 
   return (
     <div class="mx-2 overflow-y-scroll bg-base-100 rounded-box">
-      <ul class="menu w-full">
-        <For each={$PluginIds()}>
-          {(pluginId) => (
-            <PluginItem
-              pluginId={pluginId}
-              selectedPluginId={$selectedPluginId()}
-              selectedPluginInstanceKey={$selectedPluginInstanceKey()}
-              selectedPluginInstanceFunctionalityKey={$selectedPluginInstanceFunctionalityKey()}
-            />
+      <Switch>
+        <Match when={$pluginIds() === "loading"}>
+          TODO: LOADING
+        </Match>
+        <Match when={stringToNull($pluginIds())}>
+          {($pluginIds) => (
+            <ul class="menu w-full">
+              <For each={$pluginIds()}>
+                {(pluginId) => (
+                  <PluginItem
+                    pluginId={pluginId}
+                    selectedPluginId={$selectedPluginId()}
+                    selectedPluginInstanceKey={$selectedPluginInstanceKey()}
+                    selectedPluginInstanceFunctionalityKey={$selectedPluginInstanceFunctionalityKey()}
+                  />
+                )}
+              </For>
+            </ul>
           )}
-        </For>
-      </ul>
+        </Match>
+      </Switch>
     </div>
   );
 };
@@ -119,11 +118,13 @@ const PluginItem: Component<{
   selectedPluginInstanceKey: null | PluginInstanceKey;
   selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
 }> = ($props) => {
-  const $info = createAsync(() => getPluginInfo($props.pluginId));
-  const $instanceKeys = createAsync<null | PluginInstanceKey[] | "loading">(
-    () => getPluginInstanceKeys($props.pluginId),
-    { initialValue: "loading" },
+  const lqClient = getLiveQueryingClientSingleton();
+
+  const $info = createMemo(() => lqClient.queryPluginInfo($props.pluginId)());
+  const $instanceKeys = createMemo(() =>
+    lqClient.queryPluginInstanceKeys($props.pluginId)()
   );
+  createEffect(() => console.log($instanceKeys()));
 
   const $isActive = () => $props.selectedPluginId === $props.pluginId;
 
@@ -195,9 +196,9 @@ const InstanceItemContent: Component<{
   shownName: string;
   instanceKey: PluginInstanceKey;
 }> = ($props) => {
-  const $status = createAsync<PluginStatus | "unknown">(
-    () => getPluginInstanceStatus($props.pluginId, $props.instanceKey),
-    { initialValue: "unknown" },
+  const lqClient = getLiveQueryingClientSingleton();
+  const $status = createMemo(() =>
+    lqClient.queryPluginInstanceStatus($props.pluginId, $props.instanceKey)()
   );
 
   return (
@@ -258,14 +259,14 @@ const FunctionalityItems: Component<{
   isPluginInstanceActive: boolean;
   selectedPluginInstanceFunctionalityKey: PluginInstanceFunctionalityKey | null;
 }> = ($props) => {
-  const $fs = createAsync<
-    | [FunctionalityFqn, Functionality["info"]][]
-    | "loading"
-  >(() =>
-    getPluginInstanceFunctionalityInfos(
+  const lqClient = getLiveQueryingClientSingleton();
+
+  const $fs = createMemo(() =>
+    lqClient.queryPluginInstanceFunctionalityInfos(
       $props.pluginId,
-      $props.pluginInstanceKey ?? SINGLETON_PLUGIN_INSTANCE_KEY,
-    ), { initialValue: "loading" });
+      $props.pluginInstanceKey,
+    )()
+  );
 
   return (
     <Switch>

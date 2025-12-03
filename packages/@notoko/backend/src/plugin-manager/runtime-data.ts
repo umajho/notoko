@@ -1,7 +1,6 @@
 import * as _ from "es-toolkit";
 
-import { type Accessor, batch, createMemo, createSignal, on } from "solid-js";
-import { createStore } from "solid-js/store";
+import { computed, effect, signal } from "alien-signals";
 
 import {
   type Functionality,
@@ -14,6 +13,7 @@ import {
   type PluginStatus,
 } from "@notoko/definitions";
 import { urlEncodeToSafePathSegment } from "@notoko/utils/path-segment-url-encoding";
+import { untrack } from "@notoko/utils/alien-signals";
 
 /**
  * NOTE: `*TreeNode` and `*Tree` are historical names for the tree-based plugin
@@ -37,78 +37,78 @@ export interface RuntimeTreeNode {
  * premature optimization is the root of all evil.
  */
 export function createRuntimeData() {
-  const [$runtimeTree, set$runtimeTree_] = //
-    createStore<Record<PluginId, RuntimeTreeNode>>({});
-  const [$pluginIds, set$pluginIds] = createSignal<PluginId[]>([]);
-  const [$infos, set$infos] = //
-    createSignal<Record<PluginId, Plugin["info"]>>({});
-  const [$instanceKeys, set$instanceKeys] = //
-    createSignal<Record<PluginId, null | PluginInstanceKey[]>>({});
-  const set$runtimeTree = new Proxy(set$runtimeTree_, {
-    apply: (target, thisArg, args) => {
-      batch(() => {
-        Reflect.apply(target, thisArg, args);
+  const $runtimeTree = signal<Record<PluginId, RuntimeTreeNode>>({});
+  const $pluginIds = signal<PluginId[]>([]);
+  const $infos = signal<Record<PluginId, Plugin["info"]>>({});
+  const $instanceKeys = //
+    signal<Record<PluginId, null | PluginInstanceKey[]>>({});
+  effect(() => {
+    const runtimeTree = $runtimeTree();
 
-        set$pluginIds(Object.keys($runtimeTree) as PluginId[]);
+    $pluginIds(Object.keys(runtimeTree) as PluginId[]);
 
-        const newInfos: Record<PluginId, Plugin["info"]> = {};
-        const newInstances: Record<PluginId, null | PluginInstanceKey[]> = {};
-        for (const [id_, node] of Object.entries($runtimeTree)) {
-          const id = id_ as PluginId;
-          newInfos[id] = node.plugin.info;
-          switch (node.plugin.type) {
-            case "plugin:singleton":
-              newInstances[id] = null;
-              break;
-            case "plugin:multiton":
-              throw new Error("TODO: implement multiton instances listing.");
-            default:
-              node!.plugin satisfies never;
-              throw new Error("unreachable!");
-          }
-        }
-        set$infos(newInfos);
-        set$instanceKeys(newInstances);
-      });
-    },
+    const newInfos: Record<PluginId, Plugin["info"]> = {};
+    const newInstances: Record<PluginId, null | PluginInstanceKey[]> = {};
+    for (const [id_, node] of Object.entries(runtimeTree)) {
+      const id = id_ as PluginId;
+      newInfos[id] = node.plugin.info;
+      switch (node.plugin.type) {
+        case "plugin:singleton":
+          newInstances[id] = null;
+          break;
+        case "plugin:multiton":
+          throw new Error("TODO: implement multiton instances listing.");
+        default:
+          node!.plugin satisfies never;
+          throw new Error("unreachable!");
+      }
+    }
+    $infos(newInfos);
+    $instanceKeys(newInstances);
   });
 
-  const [$instanceStatusMap, set$instanceStatusMap] = //
-    createSignal<Record<string, PluginStatus>>({});
+  const $instanceStatusMap = signal<Record<string, PluginStatus>>({});
   function set$statusFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
     status: PluginStatus,
   ) {
     const prefix = makePluginInstanceFqn(pluginId, instanceKey);
-    set$instanceStatusMap((old) => ({ ...old, [prefix]: status }));
+    $instanceStatusMap({
+      ...untrack(() => $instanceStatusMap()),
+      [prefix]: status,
+    });
   }
   function getStatusAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<PluginStatus | "unknown"> {
+  ): () => PluginStatus | "unknown" {
     const prefix = makePluginInstanceFqn(pluginId, instanceKey);
-    return createMemo(() => {
+    return computed(() => {
       const map = $instanceStatusMap();
       return map[prefix] ?? "unknown";
     });
   }
 
-  const [$functionalities, set$functionalities] = createSignal<
-    Record<string, Functionality>
-  >({});
-  const $phonemizers = createMemo(on(
-    $functionalities,
-    (fs) => _.pickBy(fs, (x) => x.type === "functionality:phonemizer"),
-  ));
-  const $durationPredictors = createMemo(on(
-    $functionalities,
-    (fs) => _.pickBy(fs, (x) => x.type === "functionality:duration_predictor"),
-  ));
-  const $prosodyGenerators = createMemo(on(
-    $functionalities,
-    (fs) => _.pickBy(fs, (x) => x.type === "functionality:prosody_generator"),
-  ));
+  const $functionalities = signal<Record<string, Functionality>>({});
+  const $phonemizers = computed(() =>
+    _.pickBy(
+      $functionalities(),
+      (x) => x.type === "functionality:phonemizer",
+    )
+  );
+  const $durationPredictors = computed(() =>
+    _.pickBy(
+      $functionalities(),
+      (x) => x.type === "functionality:duration_predictor",
+    )
+  );
+  const $prosodyGenerators = computed(() =>
+    _.pickBy(
+      $functionalities(),
+      (x) => x.type === "functionality:prosody_generator",
+    )
+  );
 
   function set$functionalitiesFor(
     pluginId: PluginId,
@@ -118,47 +118,46 @@ export function createRuntimeData() {
       Functionality
     >,
   ) {
-    set$functionalities((old) => {
-      const prefix = makePluginInstanceFqn(pluginId, instanceKey);
-      const entries = Object.entries(old)
-        .filter(([key, _]) => !key.startsWith(prefix));
-      for (const [newKey, newF] of Object.entries(functionalities)) {
-        const newAbsolutePath = //
-          `${prefix}[${urlEncodeToSafePathSegment(newKey)}]`;
-        entries.push([newAbsolutePath, newF]);
-      }
-      return Object.fromEntries(entries);
-    });
+    const old = untrack(() => $functionalities());
+
+    const prefix = makePluginInstanceFqn(pluginId, instanceKey);
+    const entries = Object.entries(old)
+      .filter(([key, _]) => !key.startsWith(prefix));
+    for (const [newKey, newF] of Object.entries(functionalities)) {
+      const newAbsolutePath = //
+        `${prefix}[${urlEncodeToSafePathSegment(newKey)}]`;
+      entries.push([newAbsolutePath, newF]);
+    }
+
+    $functionalities(Object.fromEntries(entries));
   }
   function getFunctionalitiesAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<[FunctionalityFqn, Functionality][]> {
+  ): () => [FunctionalityFqn, Functionality][] {
     const prefix = makePluginInstanceFqn(pluginId, instanceKey);
-    return createMemo(on(
-      $functionalities,
-      (fs) => {
-        // no idea why the return type of `_.pickBy` become
-        // `Record<……, …… | undefined>`.
-        fs = _.pickBy(fs, (_, key) => key.startsWith(prefix)) as //
-        Record<FunctionalityFqn, Functionality>;
-        return Object.entries(fs) as [FunctionalityFqn, Functionality][];
-      },
-    ));
+    return computed(() => {
+      let fs = $functionalities();
+      // no idea why the return type of `_.pickBy` become
+      // `Record<……, …… | undefined>`.
+      fs = _.pickBy(fs, (_, key) => key.startsWith(prefix)) as //
+      Record<FunctionalityFqn, Functionality>;
+      return Object.entries(fs) as [FunctionalityFqn, Functionality][];
+    });
   }
   function getFunctionalityInfosAccessorFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-  ): Accessor<[FunctionalityFqn, Functionality["info"]][]> {
-    return createMemo(() => {
+  ): () => [FunctionalityFqn, Functionality["info"]][] {
+    return computed(() => {
       const f = getFunctionalitiesAccessorFor(pluginId, instanceKey);
       return f().map(([p, f]) => [p, f.info]);
     });
   }
   function getFunctionalityAccessorFor(
     fqn: FunctionalityFqn,
-  ): Accessor<Functionality | null> {
-    return createMemo(() => {
+  ): () => Functionality | null {
+    return computed(() => {
       const fs = $functionalities();
       return fs[fqn] ?? null;
     });
@@ -166,7 +165,6 @@ export function createRuntimeData() {
 
   return {
     $runtimeTree,
-    set$runtimeTree,
     $pluginIds,
     $infos,
     $instanceKeys,
