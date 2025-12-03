@@ -104,7 +104,7 @@ export class LiveQueryingClient {
           const topicKey = JSON.stringify(topic);
           const s = this.#signals[topicKey];
           if (s) {
-            s.setter(reconcile(v, { merge: true }));
+            s.setter(v);
           } else {
             const text =
               "LiveQueryingClient: received update for unregistered topic";
