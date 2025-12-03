@@ -33,29 +33,56 @@ export class LiveQueryingClient {
   }
 
   static async make() {
-    const socket = await this.#makeSocket();
+    const socket = await this.#makeGoodSocket();
     return new LiveQueryingClient(socket);
   }
 
-  static #makeSocket(): Promise<WebSocket> {
-    const [promise, resolve] = (() => {
-      let res: (socket: WebSocket) => void;
-      const p = new Promise<WebSocket>((r) => {
-        res = r;
-      });
-      return [p, res!];
-    })();
+  static async #makeGoodSocket(): Promise<WebSocket> {
+    function makeSocket(): Promise<WebSocket> {
+      const [promise, resolve, reject] = (() => {
+        let resolve!: (socket: WebSocket) => void;
+        let reject!: (reason?: any) => void;
+        const p = new Promise<WebSocket>((resolve_, reject_) => {
+          resolve = resolve_;
+          reject = reject_;
+        });
+        return [p, resolve, reject];
+      })();
 
-    const protocol = location.protocol === "https:" ? "wss" : "ws";
-    const socket = new WebSocket(
-      `${protocol}://${location.host}/live-querying.ws`,
-    );
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const socket = new WebSocket(
+        `${protocol}://${location.host}/live-querying.ws`,
+      );
 
-    socket.onopen = () => {
-      resolve(socket);
-    };
+      socket.onmessage = (ev) => {
+        const msg = MessageToClient.parse(JSON.parse(ev.data));
+        if (msg === "ready") {
+          resolve(socket);
+        } else {
+          throw new Error("LiveQueryingClient: BAD STATE!");
+        }
+      };
+      // I don't know why (maybe it is due to I disabled SSR?), but solid-start
+      // will pretend a WebSocket endpoint is working even if it is not ready.
+      setTimeout(() =>
+        reject(
+          new Error(
+            "LiveQueryingClient: this is likely an illusion of successful connection.",
+          ),
+        ), 100);
 
-    return promise;
+      return promise;
+    }
+
+    while (true) {
+      try {
+        const socket = await makeSocket();
+        return socket;
+      } catch {
+        // TODO: backoff.
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
   }
 
   async #handleSocketOpen() {
@@ -89,12 +116,10 @@ export class LiveQueryingClient {
     this.#socket!.onerror = (ev) => {
       console.error("LiveQueryingClient: websocket error!", ev);
       this.#socket = null;
-      navigator.locks.request("notoko:live-querying-websocket-reconnect", {
+      navigator.locks.request("notoko:live-querying:reconnect", {
         ifAvailable: true,
       }, async () => {
-        // TODO: backoff.
-        await new Promise((r) => setTimeout(r, 1000));
-        this.#socket = await LiveQueryingClient.#makeSocket();
+        this.#socket = await LiveQueryingClient.#makeGoodSocket();
         this.#handleSocketOpen();
       });
     };
