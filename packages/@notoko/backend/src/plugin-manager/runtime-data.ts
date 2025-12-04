@@ -92,10 +92,7 @@ export function createRuntimeData() {
 
   const $functionalities = signal<Record<string, Functionality>>({});
   const $phonemizers = computed(() =>
-    _.pickBy(
-      $functionalities(),
-      (x) => x.type === "functionality:phonemizer",
-    )
+    _.pickBy($functionalities(), (x) => x.type === "functionality:phonemizer")
   );
   const $durationPredictors = computed(() =>
     _.pickBy(
@@ -113,10 +110,7 @@ export function createRuntimeData() {
   function set$functionalitiesFor(
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
-    functionalities: Record<
-      PluginInstanceFunctionalityKey,
-      Functionality
-    >,
+    functionalities: Record<PluginInstanceFunctionalityKey, Functionality>,
   ) {
     const old = untrack(() => $functionalities());
 

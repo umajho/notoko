@@ -141,10 +141,7 @@ function createContext(
     set$functionalitiesFor: (
       pluginId: PluginId,
       instanceKey: PluginInstanceKey,
-      functionalities: Record<
-        PluginInstanceFunctionalityKey,
-        Functionality
-      >,
+      functionalities: Record<PluginInstanceFunctionalityKey, Functionality>,
     ) => void;
     set$statusFor: (
       pluginId: PluginId,
@@ -153,16 +150,13 @@ function createContext(
     ) => void;
   },
 ) {
-  let changeStaticConfigurationHandler:
-    | ((config: object) => void)
-    | null = null;
+  let changeStaticConfigurationHandler: ((config: object) => void) | null =
+    null;
   let pendingStaticConfigurationChange: object | null = null;
   let requestRefreshHandler: (() => void) | null = null;
   let hasPendingRefreshRequest = false;
   const context: PluginContext = {
-    set onChangeStaticConfiguration(
-      handler: (config: object) => void,
-    ) {
+    set onChangeStaticConfiguration(handler: (config: object) => void) {
       changeStaticConfigurationHandler = handler;
       if (pendingStaticConfigurationChange) {
         handler(pendingStaticConfigurationChange);
@@ -177,9 +171,7 @@ function createContext(
       }
     },
     set onDispose(
-      handler: (
-        untilChildrenAreDisposed: Promise<void>,
-      ) => Promise<void>,
+      handler: (untilChildrenAreDisposed: Promise<void>) => Promise<void>,
     ) {
       throw new Error(
         "TODO: implement `set onDispose` on `PluginNodeContext`.",
@@ -189,10 +181,7 @@ function createContext(
       opts.set$statusFor(pluginId, instanceKey, status);
     },
     setFunctionalities: (
-      functionalities: Record<
-        PluginInstanceFunctionalityKey,
-        Functionality
-      >,
+      functionalities: Record<PluginInstanceFunctionalityKey, Functionality>,
     ) => {
       opts.set$functionalitiesFor(pluginId, instanceKey, functionalities);
     },
