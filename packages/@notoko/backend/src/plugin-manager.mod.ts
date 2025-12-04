@@ -4,7 +4,6 @@ import * as z from "zod/v4";
 import * as _ from "es-toolkit";
 
 import {
-  DATA_PLUGIN_DATA_PATH,
   type Functionality,
   type Plugin,
   type PluginContext,
@@ -28,10 +27,10 @@ export type RegisterPluginErrorContent =
   | ["id_conflict", { conflictedId: PluginId }]
   | ["bad_id", { id: string; error: z.ZodError }];
 
-function makePluginManager() {
-  const knownMultitonInstances = getPluginInstancesKnownInDataFolder();
+function makePluginManager(opts: { pluginDataPath: string }) {
+  const knownMultitonInstances = getPluginInstancesKnownInDataFolder(opts);
 
-  const persistentDataManager = new PersistentDataManager();
+  const persistentDataManager = new PersistentDataManager(opts);
 
   const {
     $runtimeTree,
@@ -327,14 +326,13 @@ function createContext(
   };
 }
 
-function getPluginInstancesKnownInDataFolder(): Record<
-  PluginId,
-  PluginInstanceKey[]
-> {
+function getPluginInstancesKnownInDataFolder(opts: {
+  pluginDataPath: string;
+}): Record<PluginId, PluginInstanceKey[]> {
   const knownList: //
     { pluginId: PluginId; pluginInstanceKey: PluginInstanceKey }[] = [];
   const badFqn: string[] = [];
-  for (const entry of FS.readdirSync(DATA_PLUGIN_DATA_PATH)) {
+  for (const entry of FS.readdirSync(opts.pluginDataPath)) {
     const RX = /^(.+)\.static-configuration\.json$/;
     const g = RX.exec(entry);
     if (!g) continue;

@@ -1,6 +1,7 @@
 // @refresh reload
 import { createHandler, StartServer } from "@solidjs/start/server";
-import { initializeOnce } from "~/entry-server-init";
+
+import { initializeOnce } from "~/server/init";
 
 await initializeOnce();
 

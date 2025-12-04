@@ -3,7 +3,6 @@ import FS from "node:fs";
 import { effect, signal } from "alien-signals";
 
 import {
-  DATA_PLUGIN_DATA_PATH,
   makePluginInstanceFqn,
   PluginId,
   PluginInstanceFqn,
@@ -24,20 +23,26 @@ interface Entry {
  * that have not been registered).
  */
 export class PersistentDataManager {
-  instances: Record<PluginInstanceFqn, Entry> = {};
+  #pluginDataPath: string;
+
+  constructor(opts: {
+    pluginDataPath: string;
+  }) {
+    this.#pluginDataPath = opts.pluginDataPath;
+  }
+
+  #instances: Record<PluginInstanceFqn, Entry> = {};
 
   static #initializeInstance(
-    fqn: PluginInstanceFqn,
     opts: {
+      staticConfigurationFilePath: string;
       defaultStaticConfiguration?: object;
       submittedStaticConfiguration?: object;
     },
   ): Entry {
-    const path = PersistentDataManager.#getStaticConfigurationFilePath(fqn);
-
     const staticConfig = ((): object => {
       try {
-        const data = FS.readFileSync(path, "utf-8");
+        const data = FS.readFileSync(opts.staticConfigurationFilePath, "utf-8");
         if (opts.submittedStaticConfiguration) {
           throw new Error(
             "TODO: handle attempts of creating an instance that already exists.",
@@ -49,7 +54,7 @@ export class PersistentDataManager {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
         if (opts.submittedStaticConfiguration) {
           const json = JSON.stringify(opts.submittedStaticConfiguration);
-          FS.writeFileSync(path, json, "utf-8");
+          FS.writeFileSync(opts.staticConfigurationFilePath, json, "utf-8");
           return opts.submittedStaticConfiguration;
         } else {
           if (!opts.defaultStaticConfiguration) {
@@ -67,7 +72,8 @@ export class PersistentDataManager {
       new Set<(config: object) => void>();
     const disposeEffect = effect(() => {
       const staticConfig = $staticConfiguration();
-      FS.writeFileSync(path, JSON.stringify(staticConfig), "utf-8");
+      const json = JSON.stringify(staticConfig);
+      FS.writeFileSync(opts.staticConfigurationFilePath, json, "utf-8");
       for (const cb of staticConfigurationChangeCallbacks) {
         cb(staticConfig);
       }
@@ -99,10 +105,13 @@ export class PersistentDataManager {
     },
   ) {
     const fqn = makePluginInstanceFqn(pluginId, instanceKey);
-    if (fqn in this.instances) {
+    if (fqn in this.#instances) {
       throw new Error("TODO: handle duplicate initialization.");
     }
-    this.instances[fqn] = PersistentDataManager.#initializeInstance(fqn, opts);
+    this.#instances[fqn] = PersistentDataManager.#initializeInstance({
+      ...opts,
+      staticConfigurationFilePath: this.#getStaticConfigurationFilePath(fqn),
+    });
   }
 
   /**
@@ -113,13 +122,13 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
   ) {
     const fqn = makePluginInstanceFqn(pluginId, instanceKey);
-    const path = PersistentDataManager.#getStaticConfigurationFilePath(fqn);
-    const instance = this.instances[fqn];
+    const path = this.#getStaticConfigurationFilePath(fqn);
+    const instance = this.#instances[fqn];
     if (!instance) {
       throw new Error("TODO: handle removal of non-existing instance.");
     }
     instance.disposeEffect();
-    delete this.instances[fqn];
+    delete this.#instances[fqn];
     FS.unlinkSync(path);
   }
 
@@ -132,8 +141,8 @@ export class PersistentDataManager {
     pluginId: PluginId,
     instanceKey: PluginInstanceKey,
   ): (() => object) | null {
-    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
-    const entry = this.instances[Fqn];
+    const fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.#instances[fqn];
     if (!entry) return null;
     return () => entry.$staticConfiguration();
   }
@@ -143,8 +152,8 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
     cb: (config: object) => void,
   ): { remove: () => void } {
-    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
-    const entry = this.instances[Fqn]!;
+    const fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.#instances[fqn]!;
     return entry.addStaticConfigurationChangeHandler(cb);
   }
 
@@ -153,14 +162,14 @@ export class PersistentDataManager {
     instanceKey: PluginInstanceKey,
     value: object,
   ) {
-    const Fqn = makePluginInstanceFqn(pluginId, instanceKey);
-    const entry = this.instances[Fqn]!;
+    const fqn = makePluginInstanceFqn(pluginId, instanceKey);
+    const entry = this.#instances[fqn]!;
     entry.$staticConfiguration(value);
   }
 
-  static #getStaticConfigurationFilePath(
-    Fqn: PluginInstanceFqn,
+  #getStaticConfigurationFilePath(
+    fqn: PluginInstanceFqn,
   ): string {
-    return `${DATA_PLUGIN_DATA_PATH}/${Fqn}.static-configuration.json`;
+    return `${this.#pluginDataPath}/${fqn}.static-configuration.json`;
   }
 }

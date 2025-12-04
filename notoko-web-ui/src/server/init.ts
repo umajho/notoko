@@ -1,10 +1,9 @@
 import FSP from "fs/promises";
 
-import { FOLDER_PATHS_SHOULD_BE_CREATED } from "@notoko/definitions";
-
 import { builtinPlugins } from "@notoko/builtin-plugins";
 
-import { getPluginManagerSingleton } from "./server/singletons";
+import { getPluginManagerSingleton } from "./singletons";
+import { FOLDER_PATHS_SHOULD_BE_CREATED } from "./definitions";
 
 async function init() {
   for (const path of FOLDER_PATHS_SHOULD_BE_CREATED) {
