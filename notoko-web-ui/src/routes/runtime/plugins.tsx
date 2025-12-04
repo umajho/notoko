@@ -6,8 +6,13 @@ import {
   Match,
   Switch,
 } from "solid-js";
-import { A, type RouteSectionProps, useParams } from "@solidjs/router";
-import { VsError, VsLoading, VsUnverified } from "solid-icons/vs";
+import {
+  A,
+  type RouteSectionProps,
+  useLocation,
+  useParams,
+} from "@solidjs/router";
+import { VsAdd, VsError, VsLoading, VsUnverified } from "solid-icons/vs";
 
 import {
   extractPluginInstanceFunctionalityKeyFromFqn,
@@ -133,14 +138,19 @@ const PluginItem: Component<{
       </Match>
       <Match when={stringToNull($instanceKeys())}>
         {($instanceKeys) => (
-          <InstanceItems
-            pluginId={$props.pluginId}
-            isPluginActive={$isActive()}
-            selectedPluginInstanceKey={$props.selectedPluginInstanceKey}
-            selectedPluginInstanceFunctionalityKey={$props
-              .selectedPluginInstanceFunctionalityKey}
-            instanceKeys={$instanceKeys()}
-          />
+          <li>
+            <button class={cls($isActive() && "menu-active")}>
+              {stringToNull($info())?.shownName ?? $props.pluginId}
+            </button>
+            <InstanceItems
+              pluginId={$props.pluginId}
+              isPluginActive={$isActive()}
+              selectedPluginInstanceKey={$props.selectedPluginInstanceKey}
+              selectedPluginInstanceFunctionalityKey={$props
+                .selectedPluginInstanceFunctionalityKey}
+              instanceKeys={$instanceKeys()}
+            />
+          </li>
         )}
       </Match>
       <Match when={true}>
@@ -176,14 +186,23 @@ const InstanceItems: Component<{
       <ul>
         <For each={$props.instanceKeys}>
           {(instanceKey) => (
-            <li>
-              <button>TODO</button>
-            </li>
+            <InstanceItem
+              pluginId={$props.pluginId}
+              isPluginActive={$props.isPluginActive}
+              pluginInstanceKey={instanceKey}
+              selectedPluginInstanceKey={$props.selectedPluginInstanceKey}
+              selectedPluginInstanceFunctionalityKey={$props
+                .selectedPluginInstanceFunctionalityKey}
+            >
+              <InstanceItemContent
+                pluginId={$props.pluginId}
+                shownName={instanceKey}
+                instanceKey={instanceKey}
+              />
+            </InstanceItem>
           )}
         </For>
-        <li>
-          <button>TODO: +</button>
-        </li>
+        <NewInstanceItem pluginId={$props.pluginId} />
       </ul>
     </>
   );
@@ -247,6 +266,31 @@ const InstanceItem: Component<{
         selectedPluginInstanceFunctionalityKey={$props
           .selectedPluginInstanceFunctionalityKey}
       />
+    </li>
+  );
+};
+
+const NewInstanceItem: Component<{
+  pluginId: PluginId;
+}> = ($props) => {
+  const location = useLocation();
+
+  const href = () => `/runtime/plugins/${$props.pluginId}/~new-instance`;
+
+  return (
+    <li>
+      <A
+        class={cls(
+          "flex btn btn-sm btn-dash",
+          [location.pathname, location.pathname + "/"].includes(href()) &&
+            "menu-active",
+        )}
+        href={href()}
+      >
+        <div class="mx-auto">
+          <VsAdd />
+        </div>
+      </A>
     </li>
   );
 };

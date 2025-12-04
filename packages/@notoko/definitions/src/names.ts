@@ -73,6 +73,18 @@ export function makePluginInstanceFqn(
   );
 }
 
+export function tryExtractPartsFromPluginInstanceFqn(fqn: PluginInstanceFqn) {
+  const RX = /^(.+)\[(.+)\]$/;
+  const g = RX.exec(fqn);
+  if (!g) return null;
+  return {
+    pluginId: PluginId.parse(g[1]),
+    pluginInstanceKey: PluginInstanceKey.parse(
+      urlDecodeFromSafePathSegment(UrlEncodedSafePathSegment.parse(g[2])),
+    ),
+  };
+}
+
 /**
  * A name to represent a functionality provided by a plugin instance. Note that
  * different plugin instances may have functionalities with the same key. To

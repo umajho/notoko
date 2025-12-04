@@ -11,17 +11,33 @@ import type {
   PluginId,
   PluginInstanceKey,
 } from "@notoko/definitions";
-import type { PluginManager } from "@notoko/backend";
 
-async function getPluginManagerSingleton(): Promise<PluginManager> {
+import { getPluginManagerSingleton } from "./singletons-use-server";
+
+export const newPluginInstanceAction = action(
+  async (
+    pluginId: PluginId,
+    newInstanceKey: PluginInstanceKey,
+    staticConfig: any,
+  ) => {
+    "use server";
+
+    const pm = await getPluginManagerSingleton();
+    pm.newPluginInstance(pluginId, newInstanceKey, {
+      submittedStaticConfiguration: staticConfig,
+    });
+  },
+);
+
+export const removePluginInstanceAction = action(async (
+  pluginId: PluginId,
+  instanceKey: PluginInstanceKey,
+) => {
   "use server";
 
-  // @ts-ignore
-  return globalThis.pluginManagerSingleton ??= await (async () => {
-    const { getPluginManagerSingleton } = await import("~/server/singletons");
-    return getPluginManagerSingleton();
-  })();
-}
+  const pm = await getPluginManagerSingleton();
+  pm.removePluginInstance(pluginId, instanceKey);
+});
 
 export const setPluginInstanceStaticConfigurationAction = action(
   async (pluginId: PluginId, instanceKey: PluginInstanceKey, newData: any) => {

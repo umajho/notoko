@@ -6,16 +6,16 @@ import {
   Show,
   Switch,
 } from "solid-js";
-import { createAsync, useAction } from "@solidjs/router";
+import { useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { Title } from "@solidjs/meta";
+import { VsTrash } from "solid-icons/vs";
 
 import {
   makePluginInstanceFqn,
   type Plugin,
   PluginId,
   PluginInstanceKey,
-  SINGLETON_PLUGIN_INSTANCE_KEY,
 } from "@notoko/definitions";
 
 import { Jsfe } from "~/components/web-components/Jsfe";
@@ -25,7 +25,10 @@ import { bothNonNull, stringToNull } from "~/utils/misc";
 import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
 import { LoadingSpan } from "~/components/ui/rudimentary";
 import { getLiveQueryingClientSingleton } from "~/client/singletons";
-import { setPluginInstanceStaticConfigurationAction } from "~/client/actions";
+import {
+  removePluginInstanceAction,
+  setPluginInstanceStaticConfigurationAction,
+} from "~/client/actions";
 
 export default (() => {
   const {
@@ -123,12 +126,19 @@ const MainContentReady: Component<{
     set$hasUnsavedChanges(true);
   }
 
+  const removePluginInstance = useAction(removePluginInstanceAction);
+
+  async function handleRemove() {
+    await removePluginInstance($props.pluginId, $props.pluginInstanceKey);
+    window.location.href = `/runtime/plugins`;
+  }
+
   const setPluginInstanceStaticConfiguration = //
     useAction(setPluginInstanceStaticConfigurationAction);
 
   /**
    * TODO: The actual flow should be:
-   * - call `tryUpdatePluginInstanceStaticConfiguration`.
+   * - call `trySetPluginInstanceStaticConfiguration`.
    *   - the relevant plugin validates the new data.
    * - if it returned `["ok"]`, then `set$hasUnsavedChanges(false)`.
    *   - otherwise, we should display the error message given by the plugin.
@@ -136,7 +146,7 @@ const MainContentReady: Component<{
   function handleSubmitStaticConfig(newData: any) {
     setPluginInstanceStaticConfiguration(
       $props.pluginId,
-      SINGLETON_PLUGIN_INSTANCE_KEY,
+      $props.pluginInstanceKey,
       newData,
     );
     set$hasUnsavedChanges(false);
@@ -151,6 +161,11 @@ const MainContentReady: Component<{
       <span>
         Status: {$status()} | FQN: <code>{$fqn()}</code>
       </span>
+      <div class="flex justify-end">
+        <button class="btn btn-primary btn-soft" onClick={handleRemove}>
+          <VsTrash size={24} />
+        </button>
+      </div>
       <div class={cls("card", $prefersDark() ? "bg-black" : "bg-white")}>
         <div class="card-body">
           <h2 class="card-title">

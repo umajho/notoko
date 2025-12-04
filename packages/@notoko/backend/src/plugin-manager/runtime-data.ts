@@ -22,8 +22,10 @@ import { untrack } from "@notoko/utils/alien-signals";
  */
 export interface RuntimeTreeNode {
   plugin: Plugin;
-  requestRefresh: () => void;
-  dispose: (untilChildrenDisposed: Promise<void>) => Promise<void>;
+  instances: Record<
+    PluginInstanceKey,
+    { requestRefresh: () => void; dispose: () => Promise<void> }
+  >;
 }
 
 /**
@@ -45,27 +47,45 @@ export function createRuntimeData() {
   effect(() => {
     const runtimeTree = $runtimeTree();
 
-    $pluginIds(Object.keys(runtimeTree) as PluginId[]);
-
+    const newPluginIds = new Set<PluginId>();
     const newInfos: Record<PluginId, Plugin["info"]> = {};
     const newInstances: Record<PluginId, null | PluginInstanceKey[]> = {};
-    for (const [id_, node] of Object.entries(runtimeTree)) {
-      const id = id_ as PluginId;
-      newInfos[id] = node.plugin.info;
+    for (const [pluginId_, node] of Object.entries(runtimeTree)) {
+      const pluginId = pluginId_ as PluginId;
+
+      newPluginIds.add(pluginId);
+      newInfos[pluginId] = node.plugin.info;
       switch (node.plugin.type) {
         case "plugin:singleton":
-          newInstances[id] = null;
+          newInstances[pluginId] = null;
           break;
         case "plugin:multiton":
-          throw new Error("TODO: implement multiton instances listing.");
+          const arr = (newInstances[pluginId] = [] as PluginInstanceKey[]);
+          for (const instanceKey of Object.keys(node.instances)) {
+            arr.push(instanceKey as PluginInstanceKey);
+          }
+          break;
         default:
-          node!.plugin satisfies never;
+          node.plugin satisfies never;
           throw new Error("unreachable!");
       }
     }
+    $pluginIds(Array.from(newPluginIds));
     $infos(newInfos);
     $instanceKeys(newInstances);
   });
+
+  function getPluginInstanceKeyRecommendationFor(
+    pluginId: PluginId,
+    config: object,
+  ): ["ok", PluginInstanceKey | null] | "unavailable" {
+    const runtimeTree = untrack(() => $runtimeTree());
+    const node = runtimeTree[pluginId];
+    if (!node) return "unavailable";
+    if (node.plugin.type !== "plugin:multiton") return "unavailable";
+    if (!node.plugin.recommendPluginInstanceKey) return "unavailable";
+    return ["ok", node.plugin.recommendPluginInstanceKey(config)];
+  }
 
   const $instanceStatusMap = signal<Record<string, PluginStatus>>({});
   function set$statusFor(
@@ -162,6 +182,7 @@ export function createRuntimeData() {
     $pluginIds,
     $infos,
     $instanceKeys,
+    getPluginInstanceKeyRecommendationFor,
     set$statusFor,
     getStatusAccessorFor,
     set$functionalitiesFor,

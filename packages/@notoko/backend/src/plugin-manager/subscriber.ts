@@ -165,6 +165,7 @@ export class Subscriber {
   ) {
     const path = ["pluginInstanceStaticConfiguration", pluginId, instanceKey];
     const $a = this.#m.getStaticConfigurationAccessorFor(pluginId, instanceKey);
+    if (!$a) throw new Error("TODO: handle this.");
     this.#subscribe(path, () => $a(), cb, opts);
   }
   unsubscribePluginInstanceStaticConfiguration(

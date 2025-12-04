@@ -1,15 +1,20 @@
+import * as FS from "fs";
+
 import * as z from "zod/v4";
 import * as _ from "es-toolkit";
 
 import {
+  DATA_PLUGIN_DATA_PATH,
   type Functionality,
   type Plugin,
   type PluginContext,
   PluginId,
+  PluginInstanceFqn,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   type PluginStatus,
   SINGLETON_PLUGIN_INSTANCE_KEY,
+  tryExtractPartsFromPluginInstanceFqn,
 } from "@notoko/definitions";
 
 import {
@@ -17,13 +22,15 @@ import {
   type RuntimeTreeNode,
 } from "./plugin-manager/runtime-data";
 import { PersistentDataManager } from "./plugin-manager/persistent-data";
-import { untrack } from "@notoko/utils/alien-signals";
+import { batch, untrack } from "@notoko/utils/alien-signals";
 
 export type RegisterPluginErrorContent =
   | ["id_conflict", { conflictedId: PluginId }]
   | ["bad_id", { id: string; error: z.ZodError }];
 
 function makePluginManager() {
+  const knownMultitonInstances = getPluginInstancesKnownInDataFolder();
+
   const persistentDataManager = new PersistentDataManager();
 
   const {
@@ -31,6 +38,7 @@ function makePluginManager() {
     $pluginIds,
     $infos,
     $instanceKeys,
+    getPluginInstanceKeyRecommendationFor,
     set$statusFor,
     getStatusAccessorFor,
     set$functionalitiesFor,
@@ -46,68 +54,66 @@ function makePluginManager() {
   ): Promise<["ok"] | ["error", RegisterPluginErrorContent[]]> {
     const errors: RegisterPluginErrorContent[] = [];
 
-    for (const [id, node] of Object.entries(pluginMap)) {
-      if (id in $runtimeTree()) throw new Error("TODO: handle id conflict.");
-      switch (node.type) {
+    for (const [pluginId_, plugin] of Object.entries(pluginMap)) {
+      const idResult = PluginId.safeParse(pluginId_);
+      if (!idResult.success) {
+        errors.push(["bad_id", { id: pluginId_, error: idResult.error }]);
+        continue;
+      }
+      const pluginId = idResult.data;
+
+      const newRtmNode: RuntimeTreeNode = { plugin, instances: {} };
+      const runtimeTree = untrack(() => $runtimeTree());
+      if (pluginId in runtimeTree) {
+        throw new Error("TODO: handle plugin id conflict.");
+      }
+
+      const defers: (() => void)[] = [];
+
+      switch (plugin.type) {
         case "plugin:singleton": {
-          const idResult = PluginId.safeParse(id);
-          if (!idResult.success) {
-            errors.push(["bad_id", { id, error: idResult.error }]);
-            continue;
-          }
-          const pluginId = idResult.data;
-
-          persistentDataManager
-            .initializeInstance(pluginId, SINGLETON_PLUGIN_INSTANCE_KEY, {
-              defaultStaticConfiguration: node.info.defaultStaticConfiguration,
-            });
-
-          const { context, changeStaticConfiguration, requestRefresh } =
-            createContext(pluginId, SINGLETON_PLUGIN_INSTANCE_KEY, {
-              set$functionalitiesFor,
-              set$statusFor,
-            });
-
-          const staticConfigurationChangeHandlerHandle = persistentDataManager
-            .addInstanceStaticConfigurationChangeHandler(
-              pluginId,
-              SINGLETON_PLUGIN_INSTANCE_KEY,
-              changeStaticConfiguration,
-            );
-
-          const rtmNode: RuntimeTreeNode = {
-            plugin: node,
-            requestRefresh,
-            dispose: (untilChildrenDisposed: Promise<void>) => {
-              throw new Error(
-                "TODO: implement `dispose` for `RuntimeTreeNode`.",
-              );
-              staticConfigurationChangeHandlerHandle.remove();
-            },
-          };
-          $runtimeTree({
-            ...untrack(() => $runtimeTree()),
-            [pluginId]: rtmNode,
-          });
-          set$statusFor(
-            pluginId,
-            SINGLETON_PLUGIN_INSTANCE_KEY,
-            node.initialStatus,
+          const key = SINGLETON_PLUGIN_INSTANCE_KEY;
+          defers.push(
+            registerPluginInstanceInternal(pluginId, key, newRtmNode, {
+              defaultStaticConfiguration:
+                plugin.info.defaultStaticConfiguration,
+            }),
           );
-
-          rtmNode.plugin.entry(context);
 
           break;
         }
         case "plugin:multiton": {
-          throw new Error(
-            "TODO: implement registering multition plugin nodes.",
-          );
+          for (const stockTmpl of plugin.info.staticConfigurationTemplates) {
+            if (!stockTmpl.asStock) continue;
+            const key = stockTmpl.asStock.pluginInstanceKey;
+            defers.push(
+              registerPluginInstanceInternal(pluginId, key, newRtmNode, {
+                defaultStaticConfiguration: stockTmpl.content,
+              }),
+            );
+          }
+          for (const key of knownMultitonInstances[pluginId] ?? []) {
+            defers.push(
+              registerPluginInstanceInternal(pluginId, key, newRtmNode, {}),
+            );
+          }
+
+          break;
         }
         default:
-          node satisfies never;
+          plugin satisfies never;
           throw new Error("unreachable!");
       }
+
+      batch(() => {
+        $runtimeTree({
+          ...untrack(() => $runtimeTree()),
+          [pluginId]: newRtmNode,
+        });
+        for (const defer of defers) {
+          defer();
+        }
+      });
     }
 
     if (errors.length > 0) {
@@ -116,10 +122,126 @@ function makePluginManager() {
     return ["ok"];
   }
 
+  function registerPluginInstanceInternal(
+    pluginId: PluginId,
+    instanceKey: PluginInstanceKey,
+    newRtmNode: RuntimeTreeNode,
+    opts: {
+      defaultStaticConfiguration?: object;
+      submittedStaticConfiguration?: object;
+    },
+  ) {
+    persistentDataManager.initializeInstance(pluginId, instanceKey, {
+      defaultStaticConfiguration: opts.defaultStaticConfiguration,
+      submittedStaticConfiguration: opts.submittedStaticConfiguration,
+    });
+
+    const { context, changeStaticConfiguration, requestRefresh } =
+      createContext(pluginId, instanceKey, {
+        set$functionalitiesFor,
+        set$statusFor,
+      });
+
+    const staticConfigurationChangeHandlerHandle = persistentDataManager
+      .addInstanceStaticConfigurationChangeHandler(
+        pluginId,
+        instanceKey,
+        changeStaticConfiguration,
+      );
+
+    if (instanceKey in newRtmNode.instances) {
+      throw new Error("TODO: handle plugin instance key conflict.");
+    }
+
+    newRtmNode.instances[instanceKey] = {
+      requestRefresh,
+      dispose: async () => {
+        throw new Error("TODO: implement `dispose` for plugin instances.");
+        staticConfigurationChangeHandlerHandle.remove();
+      },
+    };
+
+    return () => {
+      set$statusFor(pluginId, instanceKey, newRtmNode.plugin.initialStatus);
+      newRtmNode.plugin.entry(context);
+    };
+  }
+
+  function newPluginInstance(
+    pluginId: PluginId,
+    instanceKey: PluginInstanceKey,
+    opts: {
+      submittedStaticConfiguration: object;
+    },
+  ) {
+    const runtimeTree = untrack(() => $runtimeTree());
+    const node = runtimeTree[pluginId];
+    if (!node) {
+      throw new Error(
+        "TODO: handle attempts of creating an instance for an unregistered plugin.",
+      );
+    }
+    if (node.plugin.type !== "plugin:multiton") {
+      throw new Error(
+        "TODO: handle attempts of creating an instance for a non-multiton plugin.",
+      );
+    }
+    const defer = registerPluginInstanceInternal(
+      pluginId,
+      instanceKey,
+      node,
+      { submittedStaticConfiguration: opts.submittedStaticConfiguration },
+    );
+    batch(() => {
+      $runtimeTree({
+        ...untrack(() => $runtimeTree()),
+        [pluginId]: node,
+      });
+      defer();
+    });
+  }
+
+  function removePluginInstance(
+    pluginId: PluginId,
+    instanceKey: PluginInstanceKey,
+  ) {
+    const runtimeTree = untrack(() => $runtimeTree());
+    const node = runtimeTree[pluginId];
+    if (!node) {
+      throw new Error(
+        "TODO: handle attempts of removing an instance for an unregistered plugin.",
+      );
+    }
+    if (node.plugin.type !== "plugin:multiton") {
+      throw new Error(
+        "TODO: handle attempts of removing an instance for a non-multiton plugin.",
+      );
+    }
+    if (!(instanceKey in node.instances)) {
+      throw new Error(
+        "TODO: handle attempts of removing an non-existing instance.",
+      );
+    }
+
+    batch(() => {
+      $runtimeTree({
+        ...runtimeTree,
+        [pluginId]: {
+          ...node,
+          instances: _.omit(node.instances, [instanceKey]),
+        },
+      });
+      persistentDataManager.removeInstance(pluginId, instanceKey);
+    });
+  }
+
   return {
     registerPlugin,
+    newPluginInstance,
+    removePluginInstance,
     $pluginIds,
     $infos,
+    getPluginInstanceKeyRecommendationFor,
     getStatusAccessorFor,
     $instanceKeys,
     getFunctionalityAccessorFor,
@@ -203,6 +325,43 @@ function createContext(
       }
     },
   };
+}
+
+function getPluginInstancesKnownInDataFolder(): Record<
+  PluginId,
+  PluginInstanceKey[]
+> {
+  const knownList: //
+    { pluginId: PluginId; pluginInstanceKey: PluginInstanceKey }[] = [];
+  const badFqn: string[] = [];
+  for (const entry of FS.readdirSync(DATA_PLUGIN_DATA_PATH)) {
+    const RX = /^(.+)\.static-configuration\.json$/;
+    const g = RX.exec(entry);
+    if (!g) continue;
+    const stem = g[1]!;
+    const fqnResult = PluginInstanceFqn.safeParse(stem);
+    if (!fqnResult.success) {
+      badFqn.push(stem);
+      continue;
+    }
+    const parts = tryExtractPartsFromPluginInstanceFqn(fqnResult.data);
+    if (!parts) {
+      badFqn.push(stem);
+      continue;
+    }
+    knownList.push(parts);
+  }
+  if (badFqn.length) {
+    console.error(
+      "TODO: handle bad FQNs in the persistent data folder:",
+      badFqn,
+    );
+  }
+
+  return _.mapValues(
+    Object.groupBy(knownList, (item) => item.pluginId),
+    (items) => items!.map((item) => item.pluginInstanceKey),
+  );
 }
 
 export { makePluginManager };

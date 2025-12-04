@@ -7,12 +7,14 @@ import {
   type Functionality,
   type Plugin,
   PluginInstanceFunctionalityKey,
+  PluginInstanceKey,
   ProsodyData,
 } from "@notoko/definitions";
 
 const StaticConfiguration = z.object({
   entrypointUrl: z.url(),
 });
+type StaticConfiguration = z.infer<typeof StaticConfiguration>;
 
 const SupportedInputLanguage = z.object({
   "iso639-3": z.string(),
@@ -46,7 +48,7 @@ type JsonApiServerGetInfoResponse = z //
 
 export const prototypingJsonApiConnectorPlugin: Plugin = {
   // TODO: the proper version of this plugin should be a multiton.
-  type: "plugin:singleton",
+  type: "plugin:multiton",
   info: {
     shownName: "JSON API Connector Prototype",
     version: "0.0.1",
@@ -55,10 +57,8 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
       z.toJSONSchema(StaticConfiguration),
     ],
 
-    associatedType: "plugin:singleton",
-    defaultStaticConfiguration: {
-      entrypointUrl: "http://localhost:11111/",
-    },
+    associatedType: "plugin:multiton",
+    staticConfigurationTemplates: [],
   },
   initialStatus: "loading",
   entry: (ctx) => {
@@ -70,10 +70,7 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
       ctx.setFunctionalities({});
 
       try {
-        entrypoint = (() => {
-          const url = cfg.entrypointUrl;
-          return new URL(url + (url.endsWith("/") ? "" : "/"));
-        })();
+        entrypoint = new URL(normalizeUrl(cfg.entrypointUrl));
 
         const resp = await fetch(new URL("info", entrypoint));
         info = JsonApiServerGetInfoResponse.parse(await resp.json());
@@ -164,4 +161,15 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
       ctx.setFunctionalities(fns);
     }
   },
+  recommendPluginInstanceKey: (config: any) => {
+    let url = (config as StaticConfiguration)?.entrypointUrl;
+    if (!url) return null;
+    const result = PluginInstanceKey.safeParse(normalizeUrl(url));
+    if (!result.success) return null;
+    return result.data;
+  },
 };
+
+function normalizeUrl(url: string) {
+  return url + (url.endsWith("/") ? "" : "/");
+}

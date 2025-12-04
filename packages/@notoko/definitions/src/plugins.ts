@@ -1,5 +1,8 @@
 import type { Functionality } from "./functionalities";
-import type { PluginInstanceFunctionalityKey } from "./names";
+import type {
+  PluginInstanceFunctionalityKey,
+  PluginInstanceKey,
+} from "./names";
 
 export type PluginStatus = "loading" | "ready" | "error";
 
@@ -31,9 +34,12 @@ export type PluginMultiton = PluginBase & {
   type: "plugin:multiton";
   info: {
     associatedType: "plugin:multiton";
-    staticConfigurationTemplates: { content: object; isStock: boolean }[];
+    staticConfigurationTemplates: {
+      content: object;
+      asStock?: { pluginInstanceKey: PluginInstanceKey };
+    }[];
   };
-  extractNameFromStaticConfiguration: (config: object) => string;
+  recommendPluginInstanceKey?: (config: object) => PluginInstanceKey | null;
 };
 export type Plugin = PluginSingleton | PluginMultiton;
 
