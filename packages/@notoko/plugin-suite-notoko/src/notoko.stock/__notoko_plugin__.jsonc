@@ -1,0 +1,16 @@
+{
+  // TODO: `"$schema"`.
+
+  "id": "notoko.stock",
+  "type": "plugin:singleton",
+  "version": "0.0.1",
+  "shownName": "Notoko Stock Stuff",
+
+  "staticConfigurationSchema": [
+    "json_schema",
+    { "type": "object", "properties": {} }
+  ],
+  "defaultStaticConfiguration": {},
+
+  "initialStatus": "ready"
+}

@@ -1,31 +1,14 @@
-import * as z from "zod/v4";
-
 import {
-  type Plugin,
+  definePluginHandlers,
   PluginInstanceFunctionalityKey,
 } from "@notoko/definitions";
 
-import * as langCmn from "./basic/lang-cmn";
+import * as langCmn from "./languages/cmn/mod";
 
-const StaticConfiguration = z.object({});
-
-export const basicPlugin: Plugin = {
-  type: "plugin:singleton",
-  info: {
-    shownName: "Basic Functionalities",
-    version: "0.0.1",
-    staticConfigurationSchema: [
-      "json_schema",
-      z.toJSONSchema(StaticConfiguration),
-    ],
-
-    associatedType: "plugin:singleton",
-    defaultStaticConfiguration: {},
-  },
-  initialStatus: "ready",
+export default definePluginHandlers({
   entry: (ctx) => {
     ctx.setFunctionalities({
-      [PluginInstanceFunctionalityKey.parse("cmn.phonemizer")]: {
+      [PluginInstanceFunctionalityKey.parse("languages.cmn.phonemizer")]: {
         type: "functionality:phonemizer",
         info: {
           shownName: "Builtin Mandarin",
@@ -39,4 +22,4 @@ export const basicPlugin: Plugin = {
       },
     });
   },
-};
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { phonemize } from "./lang-cmn";
+import { phonemize } from "./mod";
 
 describe("function phonemize", () => {
   async function call(text: string) {

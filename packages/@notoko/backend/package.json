@@ -12,6 +12,8 @@
     "@notoko/utils": "workspace:*",
     "alien-signals": "catalog:",
     "es-toolkit": "catalog:",
+    "micromatch": "catalog:",
+    "ts-pattern": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -5,6 +5,10 @@ import {
   urlEncodeToSafePathSegment,
 } from "@notoko/utils/path-segment-url-encoding";
 
+export const PLUGIN_CONTAINER_CONFIGURATION_FILE_STEM =
+  "__notoko_plugin_container__";
+export const PLUGIN_CONFIGURATION_FILE_STEM = "__notoko_plugin__";
+
 /**
  * “File Stem Safe” means that the ID can be safely used as a file's stem part.
  *
@@ -35,8 +39,8 @@ function makeNullPunctuatedPartSafeId<Brand extends PropertyKey>() {
  * A fully qualified identifier for a plugin.
  *
  * example(s):
- * - `builtin.basic`
- * - `builtin.prototyping.json_api_connector`
+ * - `notoko.stock`
+ * - `notoko.connectors.json_api`
  */
 export const PluginId = makeSimpleFileStemSafeId<"PluginId">();
 export type PluginId = z.infer<typeof PluginId>;
@@ -58,8 +62,8 @@ export type PluginInstanceKey = z.infer<typeof PluginInstanceKey>;
  * A fully qualified name to represent a specific instance of a plugin.
  *
  * example(s):
- * - `builtin.basic[__singleton__]`
- * - `builtin.prototyping.json_api_connector[http%3a%2f%2flocalhost%3a11111%2f]`
+ * - `notoko.stock[__singleton__]`
+ * - `notoko.connectors.json_api[http%3a%2f%2flocalhost%3a11111%2f]`
  */
 export const PluginInstanceFqn = z.string().brand<"PluginInstanceFqn">();
 export type PluginInstanceFqn = z.infer<typeof PluginInstanceFqn>;
@@ -104,7 +108,7 @@ export type PluginInstanceFunctionalityKey = z //
  * instance.
  *
  * example(s):
- * - `builtin.basic[__singleton__][cmn%2ephonemizer]`
+ * - `notoko.stock[__singleton__][cmn%2ephonemizer]`
  */
 export const FunctionalityFqn = z.string().brand<"FunctionalityFqn">();
 export type FunctionalityFqn = z.infer<typeof FunctionalityFqn>;

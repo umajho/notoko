@@ -2,10 +2,10 @@ import { match, P } from "ts-pattern";
 import * as z from "zod/v4";
 
 import {
+  definePluginHandlers,
   DurationInput,
   DurationPrediction,
   type Functionality,
-  type Plugin,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   ProsodyData,
@@ -46,21 +46,7 @@ const JsonApiServerGetInfoResponse = z.object({
 type JsonApiServerGetInfoResponse = z //
 .infer<typeof JsonApiServerGetInfoResponse>;
 
-export const prototypingJsonApiConnectorPlugin: Plugin = {
-  // TODO: the proper version of this plugin should be a multiton.
-  type: "plugin:multiton",
-  info: {
-    shownName: "JSON API Connector Prototype",
-    version: "0.0.1",
-    staticConfigurationSchema: [
-      "json_schema",
-      z.toJSONSchema(StaticConfiguration),
-    ],
-
-    associatedType: "plugin:multiton",
-    staticConfigurationTemplates: [],
-  },
-  initialStatus: "loading",
+export default definePluginHandlers({
   entry: (ctx) => {
     let entrypoint: URL;
     let info!: JsonApiServerGetInfoResponse;
@@ -168,7 +154,7 @@ export const prototypingJsonApiConnectorPlugin: Plugin = {
     if (!result.success) return null;
     return result.data;
   },
-};
+});
 
 function normalizeUrl(url: string) {
   return url + (url.endsWith("/") ? "" : "/");

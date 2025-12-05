@@ -1,8 +1,9 @@
 {
-  "name": "@notoko/builtin-plugins",
+  "name": "@notoko/plugin-suite-notoko",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "build": "just build",
     "test": "vitest run"
   },
   "main": "lib.ts",
@@ -16,6 +17,10 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "jsonc-parser": "catalog:",
+    "rolldown": "catalog:",
+    "rollup-plugin-copy": "catalog:",
+    "rollup-plugin-license": "catalog:",
     "vitest": "catalog:"
   }
 }

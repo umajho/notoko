@@ -59,7 +59,7 @@ const MainContent: Component<{
         {($info) =>
           match($info())
             .with(
-              { associatedType: "plugin:multiton" },
+              { type: "plugin:multiton" },
               (info) => (
                 <MainContentReady pluginId={$props.pluginId} info={info} />
               ),
