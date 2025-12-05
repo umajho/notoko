@@ -23,8 +23,10 @@
     "solid-icons": "catalog:",
     "solid-js": "catalog:",
     "solid-sonner": "catalog:",
+    // XXX: provided to plugins. DO NOT REMOVE even if not used in this package.
     "ts-pattern": "catalog:",
     "vinxi": "catalog:",
+    // XXX: provided to plugins. DO NOT REMOVE even if not used in this package.
     "zod": "catalog:"
   },
   "devDependencies": {
