@@ -1,2 +1,3 @@
 prepare:
+  if ! jq -e '.dependencies | (has("zod") and has("ts-pattern"))' < package.json > /dev/null; then echo "Some dependencies that plugins might rely on are missing!" && exit 1; fi
   pnpm run -F '@notoko/plugin-suite-notoko' -r build
