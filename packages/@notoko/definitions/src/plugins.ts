@@ -10,18 +10,22 @@ type PluginBase = {
   info: {
     shownName: string;
     version: string;
+
     staticConfigurationSchema: ["json_schema", object];
+
+    initialStatus: PluginStatus;
   };
-  initialStatus: PluginStatus;
-  entry: (ctx: PluginContext) => void;
-  /**
-   * The configuration predefined by the plugin statically, which means it
-   * cannot be changed after the plugin is registered.
-   */
-  upgradeStaticConfiguration?: (
-    oldConfig: object,
-    opts: { fromVersion: string },
-  ) => object;
+  handlers: {
+    entry: (ctx: PluginContext) => void;
+    /**
+     * The configuration predefined by the plugin statically, which means it
+     * cannot be changed after the plugin is registered.
+     */
+    upgradeStaticConfiguration?: (
+      oldConfig: object,
+      opts: { fromVersion: string },
+    ) => object;
+  };
 };
 export type PluginSingleton = PluginBase & {
   type: "plugin:singleton";
@@ -29,6 +33,7 @@ export type PluginSingleton = PluginBase & {
     associatedType: "plugin:singleton";
     defaultStaticConfiguration: object;
   };
+  handlers: {};
 };
 export type PluginMultiton = PluginBase & {
   type: "plugin:multiton";
@@ -39,9 +44,13 @@ export type PluginMultiton = PluginBase & {
       asStock?: { pluginInstanceKey: PluginInstanceKey };
     }[];
   };
-  recommendPluginInstanceKey?: (config: object) => PluginInstanceKey | null;
+  handlers: {
+    recommendPluginInstanceKey?: (config: object) => PluginInstanceKey | null;
+  };
 };
 export type Plugin = PluginSingleton | PluginMultiton;
+export type PluginInfo = Plugin["info"];
+export type PluginHandlers = Plugin["handlers"];
 
 export interface PluginContext {
   set onChangeStaticConfiguration(handler: (config: object) => void);

@@ -161,8 +161,12 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     };
 
     return () => {
-      set$statusFor(pluginId, instanceKey, newRtmNode.plugin.initialStatus);
-      newRtmNode.plugin.entry(context);
+      set$statusFor(
+        pluginId,
+        instanceKey,
+        newRtmNode.plugin.info.initialStatus,
+      );
+      newRtmNode.plugin.handlers.entry(context);
     };
   }
 

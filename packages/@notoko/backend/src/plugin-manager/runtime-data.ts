@@ -83,8 +83,8 @@ export function createRuntimeData() {
     const node = runtimeTree[pluginId];
     if (!node) return "unavailable";
     if (node.plugin.type !== "plugin:multiton") return "unavailable";
-    if (!node.plugin.recommendPluginInstanceKey) return "unavailable";
-    return ["ok", node.plugin.recommendPluginInstanceKey(config)];
+    if (!node.plugin.handlers.recommendPluginInstanceKey) return "unavailable";
+    return ["ok", node.plugin.handlers.recommendPluginInstanceKey(config)];
   }
 
   const $instanceStatusMap = signal<Record<string, PluginStatus>>({});
