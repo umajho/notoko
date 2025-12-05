@@ -36,6 +36,9 @@ catalogs:
     '@tailwindcss/vite':
       specifier: ^4.0.7
       version: 4.1.17
+    '@types/micromatch':
+      specifier: ^4.0.10
+      version: 4.0.10
     '@types/node':
       specifier: 24.10.1
       version: 24.10.1
@@ -189,6 +192,9 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
     devDependencies:
+      '@types/micromatch':
+        specifier: 'catalog:'
+        version: 4.0.10
       '@types/node':
         specifier: 'catalog:'
         version: 24.10.1
