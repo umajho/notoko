@@ -1,0 +1,2 @@
+prepare:
+  pnpm run -F '@notoko/plugin-suite-notoko' -r build

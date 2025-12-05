@@ -1,11 +1,19 @@
-import * as FS from "fs";
+import FS from "node:fs";
+import FSP from "node:fs/promises";
+import Path from "node:path";
+import Process from "node:process";
 
 import * as z from "zod/v4";
 import * as _ from "es-toolkit";
+import micromatch from "micromatch";
 
 import {
   type Functionality,
   type Plugin,
+  PLUGIN_CONFIGURATION_FILE_STEM,
+  PLUGIN_CONTAINER_CONFIGURATION_FILE_STEM,
+  PluginConfiguration,
+  PluginContainerConfiguration,
   type PluginContext,
   PluginId,
   PluginInstanceFqn,
@@ -22,6 +30,8 @@ import {
 } from "./plugin-manager/runtime-data";
 import { PersistentDataManager } from "./plugin-manager/persistent-data";
 import { batch, untrack } from "@notoko/utils/alien-signals";
+import { readPotentialFileAsUtf8Sync } from "@notoko/utils/fs";
+import { match, P } from "ts-pattern";
 
 export type RegisterPluginErrorContent =
   | ["id_conflict", { conflictedId: PluginId }]
@@ -47,6 +57,66 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     $durationPredictors,
     $prosodyGenerators,
   } = createRuntimeData();
+
+  async function registerPluginsInFolder(folderPath: string) {
+    const pluginContainerConfigText = readPotentialFileAsUtf8Sync(
+      Path.join(folderPath, `${PLUGIN_CONTAINER_CONFIGURATION_FILE_STEM}.json`),
+    );
+    const pluginConfigText = readPotentialFileAsUtf8Sync(
+      Path.join(folderPath, `${PLUGIN_CONFIGURATION_FILE_STEM}.json`),
+    );
+    await match([pluginContainerConfigText, pluginConfigText])
+      .with([P.nonNullable, P.nonNullable], () => {
+        throw new Error(
+          "TODO: handle folder being both a plugin container and a plugin.",
+        );
+      })
+      .with([null, null], () => {})
+      .with([P.select(), null], async (pluginContainerConfigText) => {
+        const config = PluginContainerConfiguration
+          .parse(JSON.parse(pluginContainerConfigText!));
+        const dirents = await FSP.readdir(folderPath, { withFileTypes: true });
+        const dirs: string[] = [];
+        for (const dirent of dirents) {
+          if (
+            dirent.isDirectory() || (dirent.isSymbolicLink() &&
+              (await FSP.stat(Path.join(folderPath, dirent.name)))
+                .isDirectory())
+          ) {
+            dirs.push(dirent.name);
+          }
+        }
+        for (const dir of dirs) {
+          if (micromatch.isMatch(dir, config.include)) {
+            await registerPluginsInFolder(Path.join(folderPath, dir));
+          }
+        }
+      })
+      .with([null, P.select()], async (pluginConfigText) => {
+        await registerPluginInFolder(
+          folderPath,
+          PluginConfiguration.parse(JSON.parse(pluginConfigText!)),
+        );
+      }).exhaustive();
+  }
+
+  async function registerPluginInFolder(
+    folderPath: string,
+    config: PluginConfiguration,
+  ) {
+    const handlers = (await import(
+      /* @vite-ignore */
+      Path.join(Process.cwd(), folderPath, "handlers.js")
+    )).default;
+    // @ts-ignore
+    await registerPlugin({
+      [PluginId.parse(config.id)]: {
+        type: config.type,
+        info: config,
+        handlers,
+      },
+    });
+  }
 
   async function registerPlugin(
     pluginMap: Record<PluginId, Plugin>,
@@ -239,6 +309,7 @@ function makePluginManager(opts: { pluginDataPath: string }) {
   }
 
   return {
+    registerPluginsInFolder,
     registerPlugin,
     newPluginInstance,
     removePluginInstance,

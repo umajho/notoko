@@ -1,0 +1,17 @@
+{
+  // TODO: `"$schema"`.
+
+  "id": "notoko.connectors.json_api",
+  "type": "plugin:multiton",
+  "version": "0.0.1",
+  "shownName": "Notoko JSON API Connector",
+
+  "staticConfigurationSchema": ["json_schema", {
+    "type": "object",
+    "required": ["endpointUrl"],
+    "properties": { "entrypointUrl": { "type": "string", "format": "uri" } }
+  }],
+  "staticConfigurationTemplates": [],
+
+  "initialStatus": "loading"
+}

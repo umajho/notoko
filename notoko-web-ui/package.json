@@ -2,7 +2,9 @@
   "name": "@notoko/web-ui",
   "type": "module",
   "scripts": {
+    "predev": "just prepare",
     "dev": "vinxi dev",
+    "prebuild": "just prepare",
     "build": "vinxi build",
     "start": "vinxi start --host 127.0.0.1"
   },
@@ -10,7 +12,6 @@
     "@alenaksu/json-viewer": "catalog:",
     "@jsfe/shoelace": "catalog:",
     "@notoko/backend": "workspace:*",
-    "@notoko/builtin-plugins": "workspace:*",
     "@notoko/definitions": "workspace:*",
     "@notoko/utils": "workspace:*",
     "@shoelace-style/shoelace": "catalog:",

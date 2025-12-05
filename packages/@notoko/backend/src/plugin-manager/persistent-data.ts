@@ -2,6 +2,8 @@ import FS from "node:fs";
 
 import { effect, signal } from "alien-signals";
 
+import { readPotentialFileAsUtf8Sync } from "@notoko/utils/fs";
+
 import {
   makePluginInstanceFqn,
   PluginId,
@@ -41,30 +43,26 @@ export class PersistentDataManager {
     },
   ): Entry {
     const staticConfig = ((): object => {
-      try {
-        const data = FS.readFileSync(opts.staticConfigurationFilePath, "utf-8");
+      let text = readPotentialFileAsUtf8Sync(opts.staticConfigurationFilePath);
+      if (text) {
         if (opts.submittedStaticConfiguration) {
           throw new Error(
             "TODO: handle attempts of creating an instance that already exists.",
           );
         }
-        return JSON.parse(data);
-      } catch (e) {
-        if (!(e instanceof Error)) throw e;
-        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-        if (opts.submittedStaticConfiguration) {
-          const json = JSON.stringify(opts.submittedStaticConfiguration);
-          FS.writeFileSync(opts.staticConfigurationFilePath, json, "utf-8");
-          return opts.submittedStaticConfiguration;
-        } else {
-          if (!opts.defaultStaticConfiguration) {
-            throw new Error(
-              "TODO: handle missing static configuration with no default.",
-            );
-          }
-          return opts.defaultStaticConfiguration;
-        }
+        return JSON.parse(text);
       }
+
+      if (opts.submittedStaticConfiguration) {
+        text = JSON.stringify(opts.submittedStaticConfiguration);
+        FS.writeFileSync(opts.staticConfigurationFilePath, text, "utf-8");
+        return opts.submittedStaticConfiguration;
+      } else if (!opts.defaultStaticConfiguration) {
+        throw new Error(
+          "TODO: handle missing static configuration with no default.",
+        );
+      }
+      return opts.defaultStaticConfiguration;
     })();
 
     const $staticConfiguration = signal<object>(staticConfig!);

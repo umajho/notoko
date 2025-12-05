@@ -2,10 +2,17 @@ import * as z from "zod/v4";
 import { match } from "ts-pattern";
 
 import { addDict, pinyin } from "pinyin-pro";
-import CompleteDict from "@pinyin-pro/data/complete";
 
+// XXX: The imported file is externalized. (The file pointed here is just a
+// symbol link, and the actual file will be copied to the dist folder during
+// rolldown's build process via `rollup-plugin-copy`.) This is to reduce the
+// build time (to not minifying a JSON weighted 16MiB).
+import CompleteDict from "../../data/pinyin-pro/dict-complete.json" with //
+{ type: "json" };
+
+// XXX: Externalized.
 import fastspeech2PinyinRDataCsv from //
-"./data/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
+"../../data/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
 
 import type {
   IsValidPhonemeResult,
@@ -147,7 +154,7 @@ function phonemizeStandard(
           let { initial, final } = fastspeech2PinyinRData[pinyin]!;
           const fsTone = tone === "0" ? "5" : tone;
           final += fsTone;
-          const phonemes = [];
+          const phonemes: string[] = [];
           if (initial) {
             phonemes.push(initial);
           }

@@ -1,9 +1,8 @@
-import FSP from "fs/promises";
-
-import { builtinPlugins } from "@notoko/builtin-plugins";
+import Path from "node:path";
+import FSP from "node:fs/promises";
 
 import { getPluginManagerSingleton } from "./singletons";
-import { FOLDER_PATHS_SHOULD_BE_CREATED } from "./definitions";
+import { FOLDER_PATHS_SHOULD_BE_CREATED, PLUGIN_PATH } from "./definitions";
 
 async function init() {
   for (const path of FOLDER_PATHS_SHOULD_BE_CREATED) {
@@ -11,7 +10,8 @@ async function init() {
   }
 
   const pluginManagerSingleton = getPluginManagerSingleton();
-  pluginManagerSingleton.registerPlugin(builtinPlugins);
+  await pluginManagerSingleton
+    .registerPluginsInFolder(PLUGIN_PATH);
 }
 
 let hasInitialized = false;

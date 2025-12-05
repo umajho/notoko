@@ -10,10 +10,17 @@
     "./alien-signals": {
       "import": "./src/alien-signals.ts",
       "types": "./src/alien-signals.ts"
+    },
+    "./fs": {
+      "import": "./src/fs.ts",
+      "types": "./src/fs.ts"
     }
   },
   "dependencies": {
     "alien-signals": "catalog:",
     "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
   }
 }
