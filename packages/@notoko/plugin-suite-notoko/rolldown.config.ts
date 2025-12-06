@@ -37,7 +37,7 @@ export default defineConfig([
     output: { file: `dist/${id}/handlers.js`, format: "esm", minify: true },
     ...match(id)
       .with("notoko.stock", () => ({
-        external: [...external, /^(\.\/)?(\.\.\/)*data\//],
+        external: [...external, /^(\.\/)?(\.\.\/)*resources\//],
       })).otherwise(() => ({ external })),
     plugins: [
       license({
@@ -53,13 +53,13 @@ export default defineConfig([
             targets: [
               {
                 src: "node_modules/@pinyin-pro/data/json/complete.json",
-                dest: "dist/notoko.stock/data/pinyin-pro/",
+                dest: "dist/notoko.stock/resources/pinyin-pro/",
                 rename: () => "dict-complete.json",
               },
               {
                 src:
-                  "src/notoko.stock/data/fastspeech2-pinyin-r/processed.csv.json",
-                dest: "dist/notoko.stock/data/fastspeech2-pinyin-r/",
+                  "src/notoko.stock/resources/fastspeech2-pinyin-r/processed.csv.json",
+                dest: "dist/notoko.stock/resources/fastspeech2-pinyin-r/",
                 rename: () => "processed.csv.json",
               },
             ],

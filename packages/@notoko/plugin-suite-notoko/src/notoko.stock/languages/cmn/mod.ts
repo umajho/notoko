@@ -7,12 +7,12 @@ import { addDict, pinyin } from "pinyin-pro";
 // symbol link, and the actual file will be copied to the dist folder during
 // rolldown's build process via `rollup-plugin-copy`.) This is to reduce the
 // build time (to not minifying a JSON weighted 16MiB).
-import CompleteDict from "../../data/pinyin-pro/dict-complete.json" with //
+import CompleteDict from "../../resources/pinyin-pro/dict-complete.json" with //
 { type: "json" };
 
 // XXX: Externalized.
 import fastspeech2PinyinRDataCsv from //
-"../../data/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
+"../../resources/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
 
 import type {
   IsValidPhonemeResult,

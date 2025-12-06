@@ -1,5 +1,5 @@
 set fallback
 
 build:
-  cd src/notoko.stock/data/fastspeech2-pinyin-r && just process
+  cd src/notoko.stock/resources/fastspeech2-pinyin-r && just process
   pnpm exec rolldown -c
