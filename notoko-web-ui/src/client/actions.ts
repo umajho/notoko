@@ -6,6 +6,7 @@ import type {
   Functionality,
   FunctionalityFqn,
   IsValidPhonemeResult,
+  LanguageWithScript,
   PhonemeSegment,
   PhonemizeResult,
   PluginId,
@@ -55,7 +56,7 @@ export type FunctionalityActionResult<T> =
   | ["error", "exception", { message: string; trace?: string }];
 
 export type PhonemizerPhonemizeActionInput = {
-  language: { "iso639-3": string; script: { "iso15924": string } };
+  language: LanguageWithScript;
   text: string;
   options: {
     outputSegmentationFormat: string;

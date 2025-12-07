@@ -27,6 +27,7 @@ import {
   type FunctionalityProsodyGenerator,
   type IsValidPhonemeResult,
   type LanguageSpecifierWithSegmentationFormat,
+  LanguageWithScript,
   makeFunctionalityFqn,
   type PhonemizeResult,
   type PluginId,
@@ -170,21 +171,9 @@ const PhonemizerDemonstratorPhonemize: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
-    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
-  );
-  const $selectableScripts = createMemo(() => {
-    const scripts = $props.info.supportedInputLanguages
-      .filter((lang) => lang["iso639-3"] === $selectedLanguage())
-      .map((lang) => lang.script["iso15924"]);
-    return _.uniq(scripts);
-  });
-  const [$selectedScript, set$selectedScript] = //
-    createSignal<string | null>(null);
-  createEffect(() => {
-    const first = $selectableScripts().at(0);
-    set$selectedScript(first ?? null);
-  });
+  const [$selectedLang, set$selectedLanguage] = createSignal<
+    LanguageWithScript | null
+  >($props.info.supportedInputLanguages[0] ?? null);
   const [$selectedSegmentationFormat, set$selectedSegmentationFormat] =
     createSignal<string | null>(
       $props.info.supportedOutputSegmentationFormats[0] ?? null,
@@ -203,10 +192,7 @@ const PhonemizerDemonstratorPhonemize: Component<{
     set$actionResult("processing");
     set$actionResult(
       await phonemizerPhonemize($props.fqn, {
-        language: {
-          "iso639-3": $selectedLanguage()!,
-          script: { "iso15924": $selectedScript() ?? "Zzzz" },
-        },
+        language: $selectedLang()!,
         text: $text(),
         options: {
           outputSegmentationFormat: $selectedSegmentationFormat()!,
@@ -228,40 +214,19 @@ const PhonemizerDemonstratorPhonemize: Component<{
               <div class="flex gap-4">
                 <select
                   class="select select-sm w-fit"
-                  onInput={(ev) => set$selectedLanguage(ev.target.value)}
+                  onInput={(ev) => set$selectedLanguage(ev.target.value as any)}
                 >
-                  <option disabled selected={!$selectedLanguage()}>
-                    Language (ISO 639-3)
+                  <option disabled selected={!$selectedLang()}>
+                    {"Language-Script (<ISO 639-3>-<ISO 15924>)"}
                   </option>
                   <For each={$props.info.supportedInputLanguages}>
                     {(lang) => (
-                      <option
-                        value={lang["iso639-3"]}
-                        selected={$selectedLanguage() === lang["iso639-3"]}
-                      >
-                        {lang["iso639-3"]}
+                      <option value={lang} selected={$selectedLang() === lang}>
+                        {lang}
                       </option>
                     )}
                   </For>
                 </select>
-                <Show when={$selectableScripts().length}>
-                  <select
-                    class="select select-sm w-fit"
-                    onInput={(ev) => set$selectedScript(ev.target.value)}
-                  >
-                    <option disabled>Script (ISO 15924)</option>
-                    <For each={$selectableScripts()}>
-                      {(script) => (
-                        <option
-                          value={script}
-                          selected={$selectedScript() === script}
-                        >
-                          {script}
-                        </option>
-                      )}
-                    </For>
-                  </select>
-                </Show>
               </div>
               <div class="m-auto">
                 <VsArrowRight size={24} />

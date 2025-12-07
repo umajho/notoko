@@ -1,8 +1,8 @@
 import * as z from "zod/v4";
 import {
   Duration2d,
-  type LanguageSpecifierWithScript,
   type LanguageSpecifierWithSegmentationFormat,
+  LanguageWithScript,
   type PhonemeSegment,
 } from "./common";
 
@@ -21,11 +21,11 @@ export type FunctionalityPhonemizer = FunctionalityBase & {
   type: "functionality:phonemizer";
   info: {
     associatedType: "functionality:phonemizer";
-    supportedInputLanguages: readonly LanguageSpecifierWithScript[];
+    supportedInputLanguages: readonly LanguageWithScript[];
     supportedOutputSegmentationFormats: readonly string[];
   };
   phonemize: (
-    lang: LanguageSpecifierWithScript,
+    lang: LanguageWithScript,
     text: string,
     opts: { outputSegmentationFormat: string },
   ) => Promise<PhonemizeResult>;

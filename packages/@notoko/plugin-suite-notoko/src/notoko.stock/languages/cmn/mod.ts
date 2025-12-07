@@ -14,11 +14,11 @@ import CompleteDict from "../../resources/pinyin-pro/dict-complete.json" with //
 import fastspeech2PinyinRDataCsv from //
 "../../resources/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
 
-import type {
-  IsValidPhonemeResult,
-  LanguageSpecifierWithScript,
-  PhonemeSegment,
-  PhonemizeResult,
+import {
+  type IsValidPhonemeResult,
+  LanguageWithScript,
+  type PhonemeSegment,
+  type PhonemizeResult,
 } from "@notoko/definitions";
 
 addDict(CompleteDict);
@@ -44,10 +44,16 @@ const [fastspeech2PinyinRData, fastspeech2PinyinRValidPhonemes] = (() => {
   return [result, validPhonemes];
 })();
 
-export const phonemizerSupportedInputLanguages: LanguageSpecifierWithScript[] =
-  [
-    { "iso639-3": "cmn", script: { "iso15924": "Hans" } },
-  ];
+const LANGUAGE_WITH_SCRIPT_MAP = {
+  "cmn-Hans": LanguageWithScript.parse("cmn-Hans"),
+};
+
+export const phonemizerSupportedInputLanguages: LanguageWithScript[] = [
+  // TODO: `cmn-Hani`.
+  // The reason only `cmn-Hans` is supported for now is because pinyin-pro only
+  // supports simplified Chinese characters.
+  LANGUAGE_WITH_SCRIPT_MAP["cmn-Hans"],
+];
 export const phonemizerSupportedOutputSegmentationFormats = [
   /**
    * `fastspeech2-pinyin-r` is the format from
@@ -72,7 +78,7 @@ type PhonemizerSupportedOutputSegmentationFormat = //
   z.infer<typeof PhonemizerSupportedOutputSegmentationFormats>;
 
 export async function phonemize(
-  lang: LanguageSpecifierWithScript,
+  lang: LanguageWithScript,
   text: string,
   opts: { outputSegmentationFormat: string },
 ): Promise<PhonemizeResult> {
@@ -84,7 +90,7 @@ export async function phonemize(
 
   return match(lang)
     .returnType<PhonemizeResult>()
-    .with({ "iso639-3": "cmn" }, () => {
+    .with(LANGUAGE_WITH_SCRIPT_MAP["cmn-Hans"], () => {
       return phonemizeStandard(text, { segFormat: segFormatResult.data });
     })
     .otherwise(() => {
