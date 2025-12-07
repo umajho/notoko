@@ -8,15 +8,9 @@ export default function Layout($props: RouteSectionProps) {
 
   const TAB_NAMES = [
     "Plugins",
-    "Phonemizers",
-    "Duration-Predictors",
-    "Prosody-Generators",
   ] as const;
   const TAB_INFOS: { [key in typeof TAB_NAMES[number]]: { href: string } } = {
     "Plugins": { href: "/runtime/plugins" },
-    "Phonemizers": { href: "/runtime/phonemizers" },
-    "Duration-Predictors": { href: "/runtime/duration-predictors" },
-    "Prosody-Generators": { href: "/runtime/prosody-generators" },
   };
 
   const $tabEntries = createMemo<LinkTabEntry[]>(() => {
