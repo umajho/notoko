@@ -1,0 +1,307 @@
+From 0c974ff4e2be8663be228fc6f7b969c6dbdccdef Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Tue, 9 Dec 2025 06:48:36 +0800
+Subject: [PATCH 6/6] coordinate the code with the refactoring on the notoko
+ codebase
+
+---
+ api-server.py                         | 66 ++++++++++++++-------------
+ refactoring/IMPLEMENTATION_SUMMARY.md |  2 +-
+ refactoring/README.md                 |  2 +-
+ refactoring/example.py                |  4 +-
+ refactoring/instructions/1.md         |  2 +-
+ refactoring/instructions/2.md         |  4 +-
+ refactoring/instructions/3.md         |  4 +-
+ refactoring/instructions/4.md         |  4 +-
+ synthesize.py                         |  2 +-
+ 9 files changed, 47 insertions(+), 43 deletions(-)
+
+diff --git a/api-server.py b/api-server.py
+index f50b811..514af18 100644
+--- a/api-server.py
++++ b/api-server.py
+@@ -22,12 +22,12 @@ def get_segmentation_formats(iso639_3: str) -> list[str]:
+     """Get supported segmentation formats for a given language code."""
+     formats_map = {
+         "eng": ["librispeech"],
+-        "cmn": ["fastspeech2-pinyin-r?tones"]
++        "cmn": ["fastspeech2-pinyin-r"]
+     }
+     return formats_map.get(iso639_3, [])
+ 
+ 
+-def validate_language_and_segmentation(lang_iso639_3: str, seg_format: str) -> tuple[bool, str | None]:
++def validate_language_and_phoneme_lexicon(lang_iso639_3: str, phoneme_lexicon: str) -> tuple[bool, str | None]:
+     """
+     Validate language and segmentation format compatibility.
+     
+@@ -37,14 +37,14 @@ def validate_language_and_segmentation(lang_iso639_3: str, seg_format: str) -> t
+     # Define valid combinations
+     valid_combinations = {
+         "eng": ["librispeech"],
+-        "cmn": ["fastspeech2-pinyin-r?tones"]
++        "cmn": ["fastspeech2-pinyin-r"]
+     }
+     
+     if lang_iso639_3 not in valid_combinations:
+         return False, f"unsupported language `{lang_iso639_3}`"
+     
+-    if seg_format not in valid_combinations[lang_iso639_3]:
+-        return False, f"unsupported segmentation format `{seg_format}` for language `{lang_iso639_3}`"
++    if phoneme_lexicon not in valid_combinations[lang_iso639_3]:
++        return False, f"unsupported segmentation format `{phoneme_lexicon}` for language `{lang_iso639_3}`"
+     
+     return True, None
+ 
+@@ -74,19 +74,19 @@ def predict_duration():
+         data = request.get_json()
+         
+         # Validate request structure
+-        if not data or "language" not in data or "segments" not in data:
+-            return jsonify(["error", {"message": "missing required fields: language, segments"}]), 400
++        if not data or "specifier" not in data or "segments" not in data:
++            return jsonify(["error", {"message": "missing required fields: specifier, segments"}]), 400
+         
+-        # Parse language
+-        language = data["language"]
+-        lang_iso639_3 = language.get("iso639-3")
+-        seg_format = language.get("segmentationFormat")
++        # Parse specifier
++        specifier = data["specifier"]
++        lang_iso639_3 = specifier.get("language")
++        phoneme_lexicon = specifier.get("phonemeLexicon") 
+         
+-        if not lang_iso639_3 or not seg_format:
+-            return jsonify(["error", {"message": "language must have iso639-3 and segmentation_format"}]), 400
++        if not lang_iso639_3 or not phoneme_lexicon:
++            return jsonify(["error", {"message": "specifier must have language and phonemeLexicon"}]), 400
+         
+-        # Validate language and segmentation format
+-        is_valid, error_msg = validate_language_and_segmentation(lang_iso639_3, seg_format)
++        # Validate language and phoneme lexicon
++        is_valid, error_msg = validate_language_and_phoneme_lexicon(lang_iso639_3, phoneme_lexicon)
+         if not is_valid:
+             return jsonify(["error", {"message": error_msg}]), 400
+         
+@@ -105,7 +105,7 @@ def predict_duration():
+         phonemize_result = PhonemizeResult(segments=phoneme_segments)
+         
+         # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=seg_format)
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=phoneme_lexicon)
+         
+         # Parse optional speed parameter and calculate duration_control
+         speed = data.get("speed")
+@@ -140,19 +140,19 @@ def generate_prosody():
+         data = request.get_json()
+         
+         # Validate request structure
+-        if not data or "language" not in data or "segments" not in data:
+-            return jsonify(["error", {"message": "missing required fields: language, segments"}]), 400
++        if not data or "specifier" not in data or "segments" not in data:
++            return jsonify(["error", {"message": "missing required fields: specifier, segments"}]), 400
+         
+-        # Parse language
+-        language = data["language"]
+-        lang_iso639_3 = language.get("iso639-3")
+-        seg_format = language.get("segmentationFormat")
++        # Parse specifier
++        specifier = data["specifier"]
++        lang_iso639_3 = specifier.get("language")
++        phoneme_lexicon = specifier.get("phonemeLexicon")
+         
+-        if not lang_iso639_3 or not seg_format:
+-            return jsonify(["error", {"message": "language must have iso639-3 and segmentation_format"}]), 400
++        if not lang_iso639_3 or not phoneme_lexicon:
++            return jsonify(["error", {"message": "specifier must have language and phonemeLexicon"}]), 400
+         
+-        # Validate language and segmentation format
+-        is_valid, error_msg = validate_language_and_segmentation(lang_iso639_3, seg_format)
++        # Validate language and phoneme lexicon
++        is_valid, error_msg = validate_language_and_phoneme_lexicon(lang_iso639_3, phoneme_lexicon)
+         if not is_valid:
+             return jsonify(["error", {"message": error_msg}]), 400
+         
+@@ -171,7 +171,7 @@ def generate_prosody():
+         phonemize_result = PhonemizeResult(segments=phoneme_segments)
+         
+         # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=seg_format)
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=phoneme_lexicon)
+         
+         # Parse optional speed parameter and calculate duration_control
+         speed = data.get("speed")
+@@ -313,14 +313,16 @@ def get_info():
+                 default_config = {}
+             
+             supported_input_languages = [{
+-                "iso639-3": iso639_3,
+-                "segmentationFormatsRanked": segmentation_formats
++                "language": iso639_3,
++                "phonemeLexiconRanked": segmentation_formats
+             }]
+ 
+             # Build duration predictor info
+             duration_predictor = {
+                 "shownName": config["shown_name"],
+-                "supportedInputLanguages": supported_input_languages,
++                "specification": {
++                    "supportedLanguageAndPhonemeLexiconCombinations": supported_input_languages
++                },
+                 "configurationSchema": config_schema,
+                 "defaultConfiguration": default_config
+             }
+@@ -329,7 +331,9 @@ def get_info():
+             # Build prosody generator info
+             prosody_generator = {
+                 "shownName": config["shown_name"],
+-                "supportedInputLanguages": supported_input_languages,
++                "specification": {
++                    "supportedLanguageAndPhonemeLexiconCombinations": supported_input_languages
++                },
+                 "durationInput": "optional",
+                 "configurationSchema": config_schema,
+                 "defaultConfiguration": default_config
+diff --git a/refactoring/IMPLEMENTATION_SUMMARY.md b/refactoring/IMPLEMENTATION_SUMMARY.md
+index f3df048..86fd260 100644
+--- a/refactoring/IMPLEMENTATION_SUMMARY.md
++++ b/refactoring/IMPLEMENTATION_SUMMARY.md
+@@ -161,7 +161,7 @@ inference_service = InferenceService(
+ )
+ 
+ # Use service
+-lang = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r?tones")
++lang = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r")
+ phonemize_result = inference_service.phonemize(lang, "你好")
+ duration_result = inference_service.predict_duration(lang, phonemize_result)
+ predict_result = inference_service.predict_pitch_and_energy(
+diff --git a/refactoring/README.md b/refactoring/README.md
+index 4c95bdc..62c00cd 100644
+--- a/refactoring/README.md
++++ b/refactoring/README.md
+@@ -120,7 +120,7 @@ inference_service = InferenceService(
+ # Specify language
+ lang = LanguageSpecifier(
+     iso639_3="cmn", 
+-    segmentation_format="fastspeech2-pinyin-r?tones"
++    segmentation_format="fastspeech2-pinyin-r"
+ )
+ 
+ # Run inference pipeline
+diff --git a/refactoring/example.py b/refactoring/example.py
+index bf4f221..a6285b1 100644
+--- a/refactoring/example.py
++++ b/refactoring/example.py
+@@ -88,7 +88,7 @@ def example_mandarin_synthesis():
+     # Specify language
+     lang = LanguageSpecifier(
+         iso639_3="cmn",
+-        segmentation_format="fastspeech2-pinyin-r?tones"
++        segmentation_format="fastspeech2-pinyin-r"
+     )
+     
+     # Input text
+@@ -156,7 +156,7 @@ def example_multi_language_service():
+     print(f"English phonemes: {phonemize_result_eng.segments[0].phonemes}")
+     
+     # Synthesize Mandarin
+-    lang_cmn = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r?tones")
++    lang_cmn = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r")
+     phonemize_result_cmn = inference_service.phonemize(lang_cmn, "你好")
+     print(f"Mandarin phonemes: {[seg.phonemes for seg in phonemize_result_cmn.segments]}")
+ 
+diff --git a/refactoring/instructions/1.md b/refactoring/instructions/1.md
+index 78091c9..78233bf 100644
+--- a/refactoring/instructions/1.md
++++ b/refactoring/instructions/1.md
+@@ -43,7 +43,7 @@ def phonemize(self, lang: LanguageSpecifier, text: str):
+   """
+   `lang` looks like (dataclasses):
+   - `{"iso639_3": "eng", "segmentation_format": "librispeech"}`
+-  - `{"iso639_3": "cmn", "segmentation_format": "fastspeech2-pinyin-r?tones"}`
++  - `{"iso639_3": "cmn", "segmentation_format": "fastspeech2-pinyin-r"}`
+ 
+   returns something like (dataclasses):
+   ```
+diff --git a/refactoring/instructions/2.md b/refactoring/instructions/2.md
+index 4180f02..1d91faf 100644
+--- a/refactoring/instructions/2.md
++++ b/refactoring/instructions/2.md
+@@ -12,7 +12,7 @@ example request:
+ {
+   "language": {
+     "iso639-3": "cmn",
+-    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++    "segmentationFormat": "fastspeech2-pinyin-r"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+@@ -50,7 +50,7 @@ example request:
+ {
+   "language": {
+     "iso639-3": "cmn",
+-    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++    "segmentationFormat": "fastspeech2-pinyin-r"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+diff --git a/refactoring/instructions/3.md b/refactoring/instructions/3.md
+index b987160..bc5adb2 100644
+--- a/refactoring/instructions/3.md
++++ b/refactoring/instructions/3.md
+@@ -27,7 +27,7 @@ Change the request of `POST /generate_prosody` from like:
+ {
+   "language": {
+     "iso639-3": "cmn",
+-    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++    "segmentationFormat": "fastspeech2-pinyin-r"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+@@ -46,7 +46,7 @@ to like:
+ {
+   "language": {
+     "iso639-3": "cmn",
+-    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++    "segmentationFormat": "fastspeech2-pinyin-r"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+diff --git a/refactoring/instructions/4.md b/refactoring/instructions/4.md
+index 4549796..0e8585e 100644
+--- a/refactoring/instructions/4.md
++++ b/refactoring/instructions/4.md
+@@ -11,7 +11,7 @@ resembling to follwing:
+       "supportedInputLanguages": [
+         {
+           "iso639-3": "cmn",
+-          "segmentationFormatsRanked": ["fastspeech2-pinyin-r?tones"]
++          "segmentationFormatsRanked": ["fastspeech2-pinyin-r"]
+         }
+       ],
+       "configurationSchema": ["json_schema", {
+@@ -33,7 +33,7 @@ resembling to follwing:
+       "supportedInputLanguages": [
+         {
+           "iso639-3": "cmn",
+-          "segmentationFormatsRanked": ["fastspeech2-pinyin-r?tones"]
++          "segmentationFormatsRanked": ["fastspeech2-pinyin-r"]
+         }
+       ],
+       "durationInput": "optional" // "required", "optional", "forbidden".
+diff --git a/synthesize.py b/synthesize.py
+index b54302d..0a2ef9d 100644
+--- a/synthesize.py
++++ b/synthesize.py
+@@ -85,7 +85,7 @@ if __name__ == "__main__":
+         segmentation_format = "librispeech"
+         language_name = "english"
+     else:  # cmn
+-        segmentation_format = "fastspeech2-pinyin-r?tones"
++        segmentation_format = "fastspeech2-pinyin-r"
+         language_name = "mandarin"
+     
+     # Create InferenceService
+-- 
+2.50.1
+

@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { LanguageWithScript } from "@notoko/definitions";
+import { LanguageWithScript, PhonemeLexicon } from "@notoko/definitions";
 
 import { phonemize } from "./mod";
 
 describe("function phonemize", () => {
   async function call(text: string) {
     return phonemize(
-      LanguageWithScript.parse("cmn-Hans"),
-      text,
-      { outputSegmentationFormat: "fastspeech2-pinyin-r?tones" },
+      {
+        language: LanguageWithScript.parse("cmn-Hans"),
+        outputPhonemeLexicon: PhonemeLexicon.parse("fastspeech2-pinyin-r"),
+      },
+      { text },
     );
   }
 

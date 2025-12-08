@@ -13,9 +13,11 @@ export default definePluginHandlers({
         info: {
           shownName: "Builtin Mandarin",
           associatedType: "functionality:phonemizer",
-          supportedInputLanguages: langCmn.phonemizerSupportedInputLanguages,
-          supportedOutputSegmentationFormats:
-            langCmn.phonemizerSupportedOutputSegmentationFormats,
+          specification: {
+            supportedLanguages: langCmn.phonemizerSupportedInputLanguages,
+            supportedOutputPhonemeLexica:
+              langCmn.phonemizerSupportedOutputPhonemeLexica,
+          },
         },
         phonemize: langCmn.phonemize,
         isValidPhoneme: langCmn.isValidPhoneme,

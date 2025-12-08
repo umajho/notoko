@@ -1,7 +1,7 @@
 From e8588c1c73c2abc973568402308b26f9c90701e1 Mon Sep 17 00:00:00 2001
 From: umajho <umajho@proton.me>
 Date: Wed, 19 Nov 2025 19:25:57 +0800
-Subject: [PATCH 3/5] let copilot create `api-server.py`
+Subject: [PATCH 3/6] let copilot create `api-server.py`
 
 4 commits squashed.
 ---

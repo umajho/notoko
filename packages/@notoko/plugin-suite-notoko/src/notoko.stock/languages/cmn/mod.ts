@@ -16,7 +16,9 @@ import fastspeech2PinyinRDataCsv from //
 
 import {
   type IsValidPhonemeResult,
+  Language,
   LanguageWithScript,
+  PhonemeLexicon,
   type PhonemeSegment,
   type PhonemizeResult,
 } from "@notoko/definitions";
@@ -46,52 +48,66 @@ const [fastspeech2PinyinRData, fastspeech2PinyinRValidPhonemes] = (() => {
 
 const LANGUAGE_WITH_SCRIPT_MAP = {
   "cmn-Hans": LanguageWithScript.parse("cmn-Hans"),
-};
+} as const;
+const PHONEME_LEXICON_MAP = {
+  /**
+   * `fastspeech2-pinyin-r` is the lexicon from
+   * <https://github.com/ming024/FastSpeech2/blob/d4e79eb52e8b01d24703b2dfc0385544092958f3/lexicon/pinyin-lexicon-r.txt>.
+   *
+   * Characteristics:
+   * - It breaks down a Chinese character into at most 3 phonemes:
+   *   - an optional initial, (e.g. `b`)
+   *   - a final with tone number, (e.g. `a1`)
+   *   - and an optional erhua suffix. (`rr`)
+   * - Tone numbers are ranging from `1` to `5` (where `5` the represents
+   *   neutral tone).
+   * - `y` and `w` are treated as initials. Finals that follow them are prefixed
+   *   with `i` or `u` respectively. (e.g. `羊` -> `y` + `iang2`, `王` -> `w` +
+   *   `uang2`)
+   * - It does not cover `ng` for “嗯”.
+   *
+   * Note that although the phonemizer implemented here does not output `rr`,
+   * other processing steps that claim to support this lexicon should always
+   * support it, since a user can always manually put `rr` in the input.
+   */
+  "fastspeech2-pinyin-r": PhonemeLexicon.parse("fastspeech2-pinyin-r"),
+} as const;
 
 export const phonemizerSupportedInputLanguages: LanguageWithScript[] = [
   // TODO: `cmn-Hani`.
   // The reason only `cmn-Hans` is supported for now is because pinyin-pro only
   // supports simplified Chinese characters.
   LANGUAGE_WITH_SCRIPT_MAP["cmn-Hans"],
-];
-export const phonemizerSupportedOutputSegmentationFormats = [
-  /**
-   * `fastspeech2-pinyin-r` is the format from
-   * <https://github.com/ming024/FastSpeech2>.
-   *
-   * characteristics of `fastspeech2-pinyin-r`:
-   * - `y` and `w` are treated as initials.
-   *   - `羊` -> `y` + `iang2`, `王` -> `w` + `uang2`.
-   * - `"rr"` represents the erhua suffix. The phonemizer will never output this
-   *   phoneme, but the user can alter the output to add it.
-   * - does not cover: `ng`.
-   *
-   * additional characteristics of `fastspeech2-pinyin-r?tones`:
-   * - each segment: `[<initial>?, <final><tone>, "rr"?]`.
-   * - `<tone>` is `1`~`5`, where `5` represents neutral tone.
-   */
-  "fastspeech2-pinyin-r?tones",
 ] as const;
-const PhonemizerSupportedOutputSegmentationFormats = z
-  .enum(phonemizerSupportedOutputSegmentationFormats);
-type PhonemizerSupportedOutputSegmentationFormat = //
-  z.infer<typeof PhonemizerSupportedOutputSegmentationFormats>;
+export const phonemizerSupportedOutputPhonemeLexica = [
+  PHONEME_LEXICON_MAP["fastspeech2-pinyin-r"],
+] as const;
+const PhonemizerSupportedOutputPhonemeLexicon = z
+  .enum(phonemizerSupportedOutputPhonemeLexica);
+type PhonemizerSupportedOutputPhonemeLexicon = //
+  z.infer<typeof PhonemizerSupportedOutputPhonemeLexicon>;
 
 export async function phonemize(
-  lang: LanguageWithScript,
-  text: string,
-  opts: { outputSegmentationFormat: string },
+  inputSpec: {
+    language: LanguageWithScript;
+    outputPhonemeLexicon: PhonemeLexicon;
+  },
+  input: {
+    text: string;
+  },
 ): Promise<PhonemizeResult> {
-  const segFormatResult = PhonemizerSupportedOutputSegmentationFormats
-    .safeParse(opts.outputSegmentationFormat);
-  if (!segFormatResult.success) {
-    return ["error", "unsupported_output_segmentation_format"];
+  const phonemeLexiconResult = PhonemizerSupportedOutputPhonemeLexicon
+    .safeParse(inputSpec.outputPhonemeLexicon);
+  if (!phonemeLexiconResult.success) {
+    return ["error", "unsupported_output_phoneme_lexicon"];
   }
 
-  return match(lang)
+  return match(inputSpec.language)
     .returnType<PhonemizeResult>()
     .with(LANGUAGE_WITH_SCRIPT_MAP["cmn-Hans"], () => {
-      return phonemizeStandard(text, { segFormat: segFormatResult.data });
+      return phonemizeStandard(input.text, {
+        phonemeLexicon: phonemeLexiconResult.data,
+      });
     })
     .otherwise(() => {
       return ["error", "unsupported_input_language"];
@@ -99,39 +115,33 @@ export async function phonemize(
 }
 
 export function isValidPhoneme(
-  segmentationFormat: string,
-  phoneme: string,
+  spec: { phonemeLexicon: PhonemeLexicon },
+  input: { phoneme: string },
 ): IsValidPhonemeResult {
-  const segFormatResult = PhonemizerSupportedOutputSegmentationFormats
-    .safeParse(segmentationFormat);
-  if (!segFormatResult.success) {
-    return ["error", "unsupported_segmentation_format"];
-  }
-
-  switch (segFormatResult.data) {
-    case "fastspeech2-pinyin-r?tones": {
+  switch (spec.phonemeLexicon) {
+    case PHONEME_LEXICON_MAP["fastspeech2-pinyin-r"]: {
       if (
-        phoneme === "rr" ||
-        fastspeech2PinyinRValidPhonemes.initials.has(phoneme) ||
-        (/[1-5]/.test(phoneme.slice(-1)) && fastspeech2PinyinRValidPhonemes
-          .finals.has(phoneme.slice(0, -1)))
+        input.phoneme === "rr" ||
+        fastspeech2PinyinRValidPhonemes.initials.has(input.phoneme) ||
+        (/[1-5]/.test(input.phoneme.slice(-1)) &&
+          fastspeech2PinyinRValidPhonemes
+            .finals.has(input.phoneme.slice(0, -1)))
       ) {
         return ["ok", true];
       }
       return ["ok", false];
     }
     default:
-      segFormatResult satisfies never;
-      throw new Error("unreachable!");
+      return ["error", "unsupported_phoneme_lexicon"];
   }
 }
 
 function phonemizeStandard(
   text: string,
-  opts: { segFormat: PhonemizerSupportedOutputSegmentationFormat },
+  opts: { phonemeLexicon: PhonemizerSupportedOutputPhonemeLexicon },
 ): ["ok", PhonemeSegment[]] {
-  switch (opts.segFormat) {
-    case "fastspeech2-pinyin-r?tones":
+  switch (opts.phonemeLexicon) {
+    case "fastspeech2-pinyin-r":
       const segs = pinyin(text, { toneType: "num", type: "all" })
         .map(({ pinyin: pinyinWithTone, origin }) => {
           if (!pinyinWithTone) return { text: origin, phonemes: ["sp"] };
@@ -170,7 +180,7 @@ function phonemizeStandard(
         });
       return ["ok", segs];
     default:
-      opts.segFormat satisfies never;
+      // opts.phonemeLexicon satisfies never; // FIXME
       throw new Error("unreachable!");
   }
 }

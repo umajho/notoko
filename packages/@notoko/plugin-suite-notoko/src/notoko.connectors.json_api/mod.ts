@@ -6,6 +6,8 @@ import {
   DurationInput,
   DurationPrediction,
   type Functionality,
+  Language,
+  PhonemeLexicon,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   ProsodyData,
@@ -16,18 +18,20 @@ const StaticConfiguration = z.object({
 });
 type StaticConfiguration = z.infer<typeof StaticConfiguration>;
 
-const SupportedInputLanguage = z.object({
-  "iso639-3": z.string(),
-  segmentationFormatsRanked: z.array(z.string()),
+const Specification = z.object({
+  supportedLanguageAndPhonemeLexiconCombinations: z.array(z.object({
+    language: Language,
+    phonemeLexiconRanked: z.array(PhonemeLexicon),
+  })),
 });
-type SupportedInputLanguage = z.infer<typeof SupportedInputLanguage>;
+type Specification = z.infer<typeof Specification>;
 
 const JsonApiServerGetInfoResponse = z.object({
   durationPredictors: z.record(
     z.string(),
     z.object({
       shownName: z.string(),
-      supportedInputLanguages: z.array(SupportedInputLanguage),
+      specification: Specification,
       configurationSchema: z.tuple([z.literal("json_schema"), z.any()]),
       defaultConfiguration: z.any(),
     }),
@@ -36,7 +40,7 @@ const JsonApiServerGetInfoResponse = z.object({
     z.string(),
     z.object({
       shownName: z.string(),
-      supportedInputLanguages: z.array(SupportedInputLanguage),
+      specification: Specification,
       durationInput: DurationInput,
       configurationSchema: z.tuple([z.literal("json_schema"), z.any()]),
       defaultConfiguration: z.any(),
@@ -70,27 +74,30 @@ export default definePluginHandlers({
 
     function handleAfterReady() { // TODO: handle error properly.
       const fns: Record<PluginInstanceFunctionalityKey, Functionality> = {};
-      for (const [name, spec] of Object.entries(info.durationPredictors)) {
+      for (const [name, content] of Object.entries(info.durationPredictors)) {
         const key = PluginInstanceFunctionalityKey
           .parse("duration_predictor.stock." + name);
         fns[key] = {
           type: "functionality:duration_predictor",
           info: {
-            shownName: spec.shownName,
+            shownName: content.shownName,
             associatedType: "functionality:duration_predictor",
-            supportedInputLanguages: spec.supportedInputLanguages
-              .flatMap((lang) =>
-                lang.segmentationFormatsRanked.map((segmentationFormat) => ({
-                  "iso639-3": lang["iso639-3"],
-                  segmentationFormat,
-                }))
-              ),
+            specification: {
+              supportedLanguageAndPhonemeLexiconCombinations: content
+                .specification.supportedLanguageAndPhonemeLexiconCombinations
+                .flatMap((c) =>
+                  c.phonemeLexiconRanked.map((phonemeLexicon) => ({
+                    language: Language.parse(c.language),
+                    phonemeLexicon,
+                  }))
+                ),
+            },
           },
-          predictDuration: async (language, segments, opts) => {
+          predictDuration: async (specifier, input) => {
             const reqBody = JSON.stringify({
-              language,
-              speed: opts.speed,
-              segments,
+              specifier,
+              speed: input.speed,
+              segments: input.phonemeSegments,
             });
             const resp = await fetch(new URL("predict_duration", entrypoint), {
               method: "POST",
@@ -105,28 +112,31 @@ export default definePluginHandlers({
           },
         };
       }
-      for (const [name, spec] of Object.entries(info.prosodyGenerators)) {
+      for (const [name, content] of Object.entries(info.prosodyGenerators)) {
         const key = PluginInstanceFunctionalityKey
           .parse("prosody_generator.stock." + name);
         fns[key] = {
           type: "functionality:prosody_generator",
           info: {
-            shownName: spec.shownName,
+            shownName: content.shownName,
             associatedType: "functionality:prosody_generator",
-            supportedInputLanguages: spec.supportedInputLanguages
-              .flatMap((lang) =>
-                lang.segmentationFormatsRanked.map((segmentationFormat) => ({
-                  "iso639-3": lang["iso639-3"],
-                  segmentationFormat,
-                }))
-              ),
-            durationInput: spec.durationInput,
+            specification: {
+              supportedLanguageAndPhonemeLexiconCombinations: content
+                .specification.supportedLanguageAndPhonemeLexiconCombinations
+                .flatMap((c) =>
+                  c.phonemeLexiconRanked.map((phonemeLexicon) => ({
+                    language: c.language,
+                    phonemeLexicon,
+                  }))
+                ),
+              durationInput: content.durationInput,
+            },
           },
-          generateProsody: async (language, segments, duration) => {
+          generateProsody: async (specifier, input) => {
             const reqBody = JSON.stringify({
-              language,
-              segments,
-              ...match(duration)
+              specifier,
+              segments: input.phonemeSegments,
+              ...match(input.duration)
                 .with(["simple", P.select()], (x) => x)
                 .with(["custom", P.select()], (x) => x)
                 .exhaustive(),

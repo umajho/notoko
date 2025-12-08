@@ -26,9 +26,10 @@ import {
   type FunctionalityPhonemizer,
   type FunctionalityProsodyGenerator,
   type IsValidPhonemeResult,
-  type LanguageSpecifierWithSegmentationFormat,
+  Language,
   LanguageWithScript,
   makeFunctionalityFqn,
+  PhonemeLexicon,
   type PhonemizeResult,
   type PluginId,
   type PluginInstanceFunctionalityKey,
@@ -173,10 +174,10 @@ const PhonemizerDemonstratorPhonemize: Component<{
 
   const [$selectedLang, set$selectedLanguage] = createSignal<
     LanguageWithScript | null
-  >($props.info.supportedInputLanguages[0] ?? null);
-  const [$selectedSegmentationFormat, set$selectedSegmentationFormat] =
-    createSignal<string | null>(
-      $props.info.supportedOutputSegmentationFormats[0] ?? null,
+  >($props.info.specification.supportedLanguages[0] ?? null);
+  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
+    createSignal<PhonemeLexicon | null>(
+      $props.info.specification.supportedOutputPhonemeLexica[0] ?? null,
     );
   const [$text, set$text] = createSignal<string>("");
 
@@ -192,11 +193,11 @@ const PhonemizerDemonstratorPhonemize: Component<{
     set$actionResult("processing");
     set$actionResult(
       await phonemizerPhonemize($props.fqn, {
-        language: $selectedLang()!,
-        text: $text(),
-        options: {
-          outputSegmentationFormat: $selectedSegmentationFormat()!,
+        specificer: {
+          language: $selectedLang()!,
+          outputPhonemeLexicon: $selectedPhonemeLexicon()!,
         },
+        input: { text: $text() },
       }),
     );
   }
@@ -219,7 +220,7 @@ const PhonemizerDemonstratorPhonemize: Component<{
                   <option disabled selected={!$selectedLang()}>
                     {"Language-Script (<ISO 639-3>-<ISO 15924>)"}
                   </option>
-                  <For each={$props.info.supportedInputLanguages}>
+                  <For each={$props.info.specification.supportedLanguages}>
                     {(lang) => (
                       <option value={lang} selected={$selectedLang() === lang}>
                         {lang}
@@ -234,16 +235,18 @@ const PhonemizerDemonstratorPhonemize: Component<{
               <select
                 class="select select-sm w-fit"
                 onInput={(ev) =>
-                  set$selectedSegmentationFormat(ev.target.value)}
+                  set$selectedPhonemeLexicon(ev.target.value as any)}
               >
-                <option disabled selected={!$selectedSegmentationFormat()}>
-                  Segmentation Format
+                <option disabled selected={!$selectedPhonemeLexicon()}>
+                  Phoneme Lexicon
                 </option>
-                <For each={$props.info.supportedOutputSegmentationFormats}>
+                <For
+                  each={$props.info.specification.supportedOutputPhonemeLexica}
+                >
                   {(format) => (
                     <option
                       value={format}
-                      selected={$selectedSegmentationFormat() === format}
+                      selected={$selectedPhonemeLexicon() === format}
                     >
                       {format}
                     </option>
@@ -287,9 +290,9 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$selectedSegmentationFormat, set$selectedSegmentationFormat] =
-    createSignal<string | null>(
-      $props.info.supportedOutputSegmentationFormats[0] ?? null,
+  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
+    createSignal<PhonemeLexicon | null>(
+      $props.info.specification.supportedOutputPhonemeLexica[0] ?? null,
     );
   const [$inputPhoneme, set$inputPhoneme] = createSignal<any>("");
 
@@ -305,8 +308,8 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
     set$actionResult("processing");
     set$actionResult(
       await phonmeizerIsValidPhoneme($props.fqn, {
-        segmentationFormat: $selectedSegmentationFormat()!,
-        phoneme: $inputPhoneme(),
+        specifier: { phonemeLexicon: $selectedPhonemeLexicon()! },
+        input: { phoneme: $inputPhoneme() },
       }),
     );
   }
@@ -324,16 +327,18 @@ const PhonemizerDemonstratorIsValidPhoneme: Component<{
               <select
                 class="join-item select w-fit"
                 onInput={(ev) =>
-                  set$selectedSegmentationFormat(ev.target.value)}
+                  set$selectedPhonemeLexicon(ev.target.value as any)}
               >
-                <option disabled selected={!$selectedSegmentationFormat()}>
-                  Segmentation Format
+                <option disabled selected={!$selectedPhonemeLexicon()}>
+                  Phoneme Lexicon
                 </option>
-                <For each={$props.info.supportedOutputSegmentationFormats}>
+                <For
+                  each={$props.info.specification.supportedOutputPhonemeLexica}
+                >
                   {(format) => (
                     <option
                       value={format}
-                      selected={$selectedSegmentationFormat() === format}
+                      selected={$selectedPhonemeLexicon() === format}
                     >
                       {format}
                     </option>
@@ -397,11 +402,13 @@ const DurationPredictorDemonstratorPredictDuration: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
-    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
-  );
-  const [$selectedSegFormat, set$selectedSegFormat] = //
-    createSignal<string | null>(null);
+  const [$selectedLanguage, set$selectedLanguage] = //
+    createSignal<Language | null>(
+      $props.info.specification
+        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null,
+    );
+  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
+    createSignal<PhonemeLexicon | null>(null);
 
   const [$validSegsData, set$validSegsData] = createSignal(null);
 
@@ -424,12 +431,11 @@ const DurationPredictorDemonstratorPredictDuration: Component<{
 
     set$actionResult(
       await predictDuration($props.fqn, {
-        language: {
-          "iso639-3": $selectedLanguage()!,
-          segmentationFormat: $selectedSegFormat()!,
+        specifier: {
+          language: $selectedLanguage()!,
+          phonemeLexicon: $selectedPhonemeLexicon()!,
         },
-        phonemeSegments: $validSegsData()!,
-        options: { speed: $speed() },
+        input: { phonemeSegments: $validSegsData()!, speed: $speed() },
       }),
     );
   }
@@ -444,12 +450,13 @@ const DurationPredictorDemonstratorPredictDuration: Component<{
           <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
             <legend class="fieldset-legend">Input</legend>
             <div class="flex justify-between items-center">
-              <LanguageAndSegmentationSelector
+              <LanguageAndPhonemeLexiconSelector
                 selectedLanguage={$selectedLanguage()}
                 set$selectedLanguage={set$selectedLanguage}
-                supportedInputLanguages={$props.info.supportedInputLanguages}
-                selectedSegmentationFormat={$selectedSegFormat()}
-                set$selectedSegmentationFormat={set$selectedSegFormat}
+                supportedLanguageAndPhonemeLexiconCombinations={$props.info
+                  .specification.supportedLanguageAndPhonemeLexiconCombinations}
+                selectedPhonemeLexicon={$selectedPhonemeLexicon()}
+                set$selectedPhonemeLexicon={set$selectedPhonemeLexicon}
               />
               <input
                 type="submit"
@@ -532,28 +539,32 @@ const ProsodyGeneratorDemonstratorGenerateProsody: Component<{
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
 
-  const [$selectedLanguage, set$selectedLanguage] = createSignal<string | null>(
-    $props.info.supportedInputLanguages[0]?.["iso639-3"] ?? null,
-  );
-  const [$selectedSegFormat, set$selectedSegFormat] = //
-    createSignal<string | null>(null);
+  const [$selectedLanguage, set$selectedLanguage] = //
+    createSignal<Language | null>(
+      $props.info.specification
+        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null,
+    );
+  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
+    createSignal<PhonemeLexicon | null>(null);
 
   const [$validSegsData, set$validSegsData] = createSignal(null);
 
   const [$durationMode, set$durationMode] = createSignal<"simple" | "custom">(
-    $props.info.durationInput === "forbidden" ? "simple" : "custom",
+    $props.info.specification.durationInput === "forbidden"
+      ? "simple"
+      : "custom",
   );
   const $durationModeTabEntries = createMemo<ButtonTabEntry[]>(() => [
     {
       name: "Custom",
       isActive: $durationMode() === "custom",
-      isDisabled: $props.info.durationInput === "forbidden",
+      isDisabled: $props.info.specification.durationInput === "forbidden",
       onClick: () => set$durationMode("custom"),
     },
     {
       name: "Simple",
       isActive: $durationMode() === "simple",
-      isDisabled: $props.info.durationInput === "required",
+      isDisabled: $props.info.specification.durationInput === "required",
       onClick: () => set$durationMode("simple"),
     },
   ]);
@@ -587,12 +598,14 @@ const ProsodyGeneratorDemonstratorGenerateProsody: Component<{
 
     set$actionResult(
       await generateProsody($props.fqn, {
-        language: {
-          "iso639-3": $selectedLanguage()!,
-          segmentationFormat: $selectedSegFormat()!,
+        specifier: {
+          language: $selectedLanguage()!,
+          phonemeLexicon: $selectedPhonemeLexicon()!,
         },
-        phonemeSegments: $validSegsData()!,
-        duration: $validDuration()!,
+        input: {
+          phonemeSegments: $validSegsData()!,
+          duration: $validDuration()!,
+        },
       }),
     );
   }
@@ -607,12 +620,13 @@ const ProsodyGeneratorDemonstratorGenerateProsody: Component<{
           <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
             <legend class="fieldset-legend">Input</legend>
             <div class="flex justify-between items-center">
-              <LanguageAndSegmentationSelector
+              <LanguageAndPhonemeLexiconSelector
                 selectedLanguage={$selectedLanguage()}
                 set$selectedLanguage={set$selectedLanguage}
-                supportedInputLanguages={$props.info.supportedInputLanguages}
-                selectedSegmentationFormat={$selectedSegFormat()}
-                set$selectedSegmentationFormat={set$selectedSegFormat}
+                supportedLanguageAndPhonemeLexiconCombinations={$props.info
+                  .specification.supportedLanguageAndPhonemeLexiconCombinations}
+                selectedPhonemeLexicon={$selectedPhonemeLexicon()}
+                set$selectedPhonemeLexicon={set$selectedPhonemeLexicon}
               />
               <input
                 type="submit"
@@ -691,58 +705,61 @@ const ProsodyGeneratorDemonstratorGenerateProsody: Component<{
   );
 };
 
-const LanguageAndSegmentationSelector: Component<{
-  selectedLanguage: string | null;
-  set$selectedLanguage: Setter<string | null>;
-  supportedInputLanguages: readonly LanguageSpecifierWithSegmentationFormat[];
-  selectedSegmentationFormat: string | null;
-  set$selectedSegmentationFormat: Setter<string | null>;
+const LanguageAndPhonemeLexiconSelector: Component<{
+  selectedLanguage: Language | null;
+  set$selectedLanguage: Setter<Language | null>;
+  supportedLanguageAndPhonemeLexiconCombinations: readonly {
+    language: Language;
+    phonemeLexicon: PhonemeLexicon;
+  }[];
+  selectedPhonemeLexicon: PhonemeLexicon | null;
+  set$selectedPhonemeLexicon: Setter<PhonemeLexicon | null>;
 }> = ($props) => {
-  const $selectableSegFormats = createMemo(() => {
-    const scripts = $props.supportedInputLanguages
-      .filter((lang) => lang["iso639-3"] === $props.selectedLanguage)
-      .map((lang) => lang.segmentationFormat);
+  const $selectablePhonemeLexica = createMemo(() => {
+    const scripts = $props.supportedLanguageAndPhonemeLexiconCombinations
+      .filter((c) => c.language === $props.selectedLanguage)
+      .map((c) => c.phonemeLexicon);
     return _.uniq(scripts);
   });
   createEffect(() => {
-    const first = $selectableSegFormats().at(0);
-    $props.set$selectedSegmentationFormat(first ?? null);
+    const first = $selectablePhonemeLexica().at(0);
+    $props.set$selectedPhonemeLexicon(first ?? null);
   });
 
   return (
     <div class="flex gap-4">
       <select
         class="select select-sm w-fit"
-        onInput={(ev) => $props.set$selectedLanguage(ev.target.value)}
+        onInput={(ev) => $props.set$selectedLanguage(ev.target.value as any)}
       >
         <option disabled selected={!$props.selectedLanguage}>
           Language (ISO 639-3)
         </option>
-        <For each={$props.supportedInputLanguages}>
-          {(lang) => (
+        <For each={$props.supportedLanguageAndPhonemeLexiconCombinations}>
+          {(c) => (
             <option
-              value={lang["iso639-3"]}
-              selected={$props.selectedLanguage === lang["iso639-3"]}
+              value={c.language}
+              selected={$props.selectedLanguage === c.language}
             >
-              {lang["iso639-3"]}
+              {c.language}
             </option>
           )}
         </For>
       </select>
-      <Show when={$selectableSegFormats().length}>
+      <Show when={$selectablePhonemeLexica().length}>
         <select
           class="select select-sm w-fit"
           onInput={(ev) =>
-            $props.set$selectedSegmentationFormat(ev.target.value)}
+            $props.set$selectedPhonemeLexicon(ev.target.value as any)}
         >
-          <option disabled>Segmentation Formats</option>
-          <For each={$selectableSegFormats()}>
-            {(segFormat) => (
+          <option disabled>Phoneme Lexica</option>
+          <For each={$selectablePhonemeLexica()}>
+            {(phonemeLexicon) => (
               <option
-                value={segFormat}
-                selected={$props.selectedSegmentationFormat === segFormat}
+                value={phonemeLexicon}
+                selected={$props.selectedPhonemeLexicon === phonemeLexicon}
               >
-                {segFormat}
+                {phonemeLexicon}
               </option>
             )}
           </For>

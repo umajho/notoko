@@ -1,8 +1,9 @@
 import * as z from "zod/v4";
 import {
   Duration2d,
-  type LanguageSpecifierWithSegmentationFormat,
+  type Language,
   LanguageWithScript,
+  PhonemeLexicon,
   type PhonemeSegment,
 } from "./common";
 
@@ -21,39 +22,53 @@ export type FunctionalityPhonemizer = FunctionalityBase & {
   type: "functionality:phonemizer";
   info: {
     associatedType: "functionality:phonemizer";
-    supportedInputLanguages: readonly LanguageWithScript[];
-    supportedOutputSegmentationFormats: readonly string[];
+    specification: {
+      supportedLanguages: readonly LanguageWithScript[];
+      supportedOutputPhonemeLexica: readonly PhonemeLexicon[];
+    };
   };
   phonemize: (
-    lang: LanguageWithScript,
-    text: string,
-    opts: { outputSegmentationFormat: string },
+    specifier: {
+      language: LanguageWithScript;
+      outputPhonemeLexicon: PhonemeLexicon;
+    },
+    input: { text: string },
   ) => Promise<PhonemizeResult>;
+  /**
+   * FIXME: `language: Language` should also be in `spec`.
+   */
   isValidPhoneme(
-    segmentationFormat: string,
-    phoneme: string,
+    specifier: { phonemeLexicon: PhonemeLexicon },
+    input: { phoneme: string },
   ): IsValidPhonemeResult;
 };
 
 export type PhonemizeResult =
   | ["ok", PhonemeSegment[]]
   | ["error", "unsupported_input_language"]
-  | ["error", "unsupported_output_segmentation_format"]
+  | ["error", "unsupported_output_phoneme_lexicon"]
   | ["error", "custom", Error];
 export type IsValidPhonemeResult =
   | ["ok", boolean]
-  | ["error", "unsupported_segmentation_format"];
+  | ["error", "unsupported_phoneme_lexicon"];
 
 export type FunctionalityDurationPredictor = FunctionalityBase & {
   type: "functionality:duration_predictor";
   info: {
     associatedType: "functionality:duration_predictor";
-    supportedInputLanguages: readonly LanguageSpecifierWithSegmentationFormat[];
+    specification: {
+      supportedLanguageAndPhonemeLexiconCombinations: readonly {
+        language: Language;
+        phonemeLexicon: PhonemeLexicon;
+      }[];
+    };
   };
   predictDuration: (
-    lang: LanguageSpecifierWithSegmentationFormat,
-    phonemeSegments: PhonemeSegment[],
-    opts: { speed?: number },
+    specifier: { language: Language; phonemeLexicon: PhonemeLexicon },
+    input: {
+      phonemeSegments: PhonemeSegment[];
+      speed?: number;
+    },
   ) => Promise<DurationPredictResult>;
 };
 
@@ -62,7 +77,7 @@ export type DurationPredictResult =
   | [
     "error",
     | "unsupported_input_language"
-    | "unsupported_input_language_segmentation_format",
+    | "unsupported_input_phoneme_lexicon",
   ]
   | ["error", "custom", Error];
 export const DurationPrediction = z
@@ -79,15 +94,22 @@ export type FunctionalityProsodyGenerator = FunctionalityBase & {
   type: "functionality:prosody_generator";
   info: {
     associatedType: "functionality:prosody_generator";
-    supportedInputLanguages: readonly LanguageSpecifierWithSegmentationFormat[];
-    durationInput: DurationInput;
+    specification: {
+      supportedLanguageAndPhonemeLexiconCombinations: readonly {
+        language: Language;
+        phonemeLexicon: PhonemeLexicon;
+      }[];
+      durationInput: DurationInput;
+    };
   };
   generateProsody: (
-    lang: LanguageSpecifierWithSegmentationFormat,
-    phonemeSegments: PhonemeSegment[],
-    duration:
-      | ["simple", { speed?: number }]
-      | ["custom", DurationPrediction],
+    specifier: { language: Language; phonemeLexicon: PhonemeLexicon },
+    input: {
+      phonemeSegments: PhonemeSegment[];
+      duration:
+        | ["simple", { speed?: number }]
+        | ["custom", DurationPrediction];
+    },
   ) => Promise<ProsodyGenerateResult>;
 };
 
@@ -96,7 +118,7 @@ export type ProsodyGenerateResult =
   | [
     "error",
     | "unsupported_input_language"
-    | "unsupported_input_language_segmentation_format",
+    | "unsupported_input_phoneme_lexicon",
   ]
   | ["error", "custom", Error];
 export const ProsodyData = z.discriminatedUnion("$schema", [

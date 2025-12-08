@@ -1,7 +1,7 @@
 From 5390f52fd404d866fa876d4229165bf8fe3f7e41 Mon Sep 17 00:00:00 2001
 From: umajho <umajho@proton.me>
 Date: Wed, 19 Nov 2025 16:32:21 +0800
-Subject: [PATCH 2/5] let copilot extract `InferenceService`
+Subject: [PATCH 2/6] let copilot extract `InferenceService`
 
 3 commits squashed.
 ---

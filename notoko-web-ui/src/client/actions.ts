@@ -6,7 +6,9 @@ import type {
   Functionality,
   FunctionalityFqn,
   IsValidPhonemeResult,
+  Language,
   LanguageWithScript,
+  PhonemeLexicon,
   PhonemeSegment,
   PhonemizeResult,
   PluginId,
@@ -56,11 +58,11 @@ export type FunctionalityActionResult<T> =
   | ["error", "exception", { message: string; trace?: string }];
 
 export type PhonemizerPhonemizeActionInput = {
-  language: LanguageWithScript;
-  text: string;
-  options: {
-    outputSegmentationFormat: string;
+  specificer: {
+    language: LanguageWithScript;
+    outputPhonemeLexicon: PhonemeLexicon;
   };
+  input: { text: string };
 };
 
 export const phonemizerPhonemizeAction = action(
@@ -82,11 +84,7 @@ export const phonemizerPhonemizeAction = action(
     try {
       return [
         "ok",
-        await functionality.phonemize(
-          input.language,
-          input.text,
-          { outputSegmentationFormat: input.options.outputSegmentationFormat },
-        ),
+        await functionality.phonemize(input.specificer, input.input),
       ];
     } catch (e) {
       return [
@@ -102,8 +100,8 @@ export const phonemizerPhonemizeAction = action(
 );
 
 export type PhonemizerIsValidPhonemeActionInput = {
-  segmentationFormat: string;
-  phoneme: string;
+  specifier: { phonemeLexicon: PhonemeLexicon };
+  input: { phoneme: string };
 };
 
 export const phonemizerIsValidPhonemeAction = action(
@@ -125,10 +123,7 @@ export const phonemizerIsValidPhonemeAction = action(
     try {
       return [
         "ok",
-        await functionality.isValidPhoneme(
-          input.segmentationFormat,
-          input.phoneme,
-        ),
+        await functionality.isValidPhoneme(input.specifier, input.input),
       ];
     } catch (e) {
       return [
@@ -144,9 +139,11 @@ export const phonemizerIsValidPhonemeAction = action(
 );
 
 export type DurationPredictorPredictDurationActionInput = {
-  language: { "iso639-3": string; segmentationFormat: string };
-  phonemeSegments: PhonemeSegment[];
-  options: { speed: number };
+  specifier: { language: Language; phonemeLexicon: PhonemeLexicon };
+  input: {
+    phonemeSegments: PhonemeSegment[];
+    speed: number;
+  };
 };
 
 export const durationPredictorPredictDurationAction = action(
@@ -168,10 +165,7 @@ export const durationPredictorPredictDurationAction = action(
     try {
       return [
         "ok",
-        await functionality
-          .predictDuration(input.language, input.phonemeSegments, {
-            speed: input.options.speed,
-          }),
+        await functionality.predictDuration(input.specifier, input.input),
       ];
     } catch (e) {
       return [
@@ -187,9 +181,11 @@ export const durationPredictorPredictDurationAction = action(
 );
 
 export type ProsodyGeneratorGenerateProsodyActionInput = {
-  language: { "iso639-3": string; segmentationFormat: string };
-  phonemeSegments: PhonemeSegment[];
-  duration: ProsodyGeneratorGenerateProsodyActionInputDuration;
+  specifier: { language: Language; phonemeLexicon: PhonemeLexicon };
+  input: {
+    phonemeSegments: PhonemeSegment[];
+    duration: ProsodyGeneratorGenerateProsodyActionInputDuration;
+  };
 };
 export type ProsodyGeneratorGenerateProsodyActionInputDuration =
   | ["simple", { speed?: number }]
@@ -215,11 +211,7 @@ export const prosodyGeneratorGenerateProsodyAction = action(
       return [
         "ok",
         await functionality
-          .generateProsody(
-            input.language,
-            input.phonemeSegments,
-            input.duration,
-          ),
+          .generateProsody(input.specifier, input.input),
       ];
     } catch (e) {
       return [

@@ -1,7 +1,7 @@
 From 5ef51f450a2d150e55082716bd6a9b74c942a7b2 Mon Sep 17 00:00:00 2001
 From: umajho <umajho@proton.me>
 Date: Mon, 1 Dec 2025 03:48:17 +0800
-Subject: [PATCH 5/5] Notoko web UI's JSON API connector prototype now works
+Subject: [PATCH 5/6] Notoko web UI's JSON API connector prototype now works
  with api-server.py
 
 start the API server: `uv run api-server.py`.
