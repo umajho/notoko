@@ -15,6 +15,9 @@ catalogs:
     '@pinyin-pro/data':
       specifier: 1.2.0
       version: 1.2.0
+    '@preact/signals':
+      specifier: ^2.5.1
+      version: 2.5.1
     '@shoelace-style/shoelace':
       specifier: ^2.20.1
       version: 2.20.1
@@ -60,6 +63,12 @@ catalogs:
     pinyin-pro:
       specifier: 3.27.0
       version: 3.27.0
+    preact:
+      specifier: ^10.28.0
+      version: 10.28.0
+    preact-custom-element:
+      specifier: ^4.6.0
+      version: 4.6.0
     rolldown:
       specifier: 1.0.0-beta.53
       version: 1.0.0-beta.53
@@ -69,6 +78,9 @@ catalogs:
     rollup-plugin-license:
       specifier: ^3.6.0
       version: 3.6.0
+    solid-element:
+      specifier: ^1.9.1
+      version: 1.9.1
     solid-icons:
       specifier: 1.1.0
       version: 1.1.0
@@ -133,6 +145,9 @@ importers:
       es-toolkit:
         specifier: 'catalog:'
         version: 1.42.0
+      solid-element:
+        specifier: 'catalog:'
+        version: 1.9.1(solid-js@1.9.10)
       solid-icons:
         specifier: 'catalog:'
         version: 1.1.0(solid-js@1.9.10)
@@ -220,18 +235,21 @@ importers:
       '@pinyin-pro/data':
         specifier: 'catalog:'
         version: 1.2.0
+      '@preact/signals':
+        specifier: 'catalog:'
+        version: 2.5.1(preact@10.28.0)
       es-toolkit:
         specifier: 'catalog:'
         version: 1.42.0
       pinyin-pro:
         specifier: 'catalog:'
         version: 3.27.0
-      solid-icons:
+      preact:
         specifier: 'catalog:'
-        version: 1.1.0(solid-js@1.9.10)
-      solid-js:
+        version: 10.28.0
+      preact-custom-element:
         specifier: 'catalog:'
-        version: 1.9.10
+        version: 4.6.0(preact@10.28.0)
       ts-pattern:
         specifier: 'catalog:'
         version: 5.9.0
@@ -794,6 +812,14 @@ packages:
 
   '@poppinss/exception@1.2.2':
     resolution: {integrity: sha512-m7bpKCD4QMlFCjA/nKTs23fuvoVFoA83brRKmObCUNmi/9tVu8Ve3w4YQAnJu4q3Tjf5fr685HYIC/IA2zHRSg==}
+
+  '@preact/signals-core@1.12.1':
+    resolution: {integrity: sha512-BwbTXpj+9QutoZLQvbttRg5x3l5468qaV2kufh+51yha1c53ep5dY4kTuZR35+3pAZxpfQerGJiQqg34ZNZ6uA==}
+
+  '@preact/signals@2.5.1':
+    resolution: {integrity: sha512-VPjk5YFt7i11Fi4UK0tzaEe5xLwfhUxXL3l89ocxQ5aPz7bRo8M5+N73LjBMPklyXKYKz6YsNo4Smp8n6nplng==}
+    peerDependencies:
+      preact: '>= 10.25.0 || >=11.0.0-0'
 
   '@rolldown/binding-android-arm64@1.0.0-beta.53':
     resolution: {integrity: sha512-Ok9V8o7o6YfSdTTYA/uHH30r3YtOxLD6G3wih/U9DO0ucBBFq8WPt/DslU53OgfteLRHITZny9N/qCUxMf9kjQ==}
@@ -1624,6 +1650,9 @@ packages:
 
   compatx@0.2.0:
     resolution: {integrity: sha512-6gLRNt4ygsi5NyMVhceOCFv14CIdDFN7fQjX1U4+47qVE/+kjPoXMK65KWK+dWxmFzMTuKazoQ9sch6pM0p5oA==}
+
+  component-register@0.8.8:
+    resolution: {integrity: sha512-djhwcxjY+X9dacaYUEOkOm7tda8uOEDiMDigWysu3xv54M8o6XDlsjR1qt5Y8QLGiKg51fqXFIR2HUTmt9ys0Q==}
 
   composed-offset-position@0.0.6:
     resolution: {integrity: sha512-Q7dLompI6lUwd7LWyIcP66r4WcS9u7AL2h8HaeipiRfCRPLMWqRx8fYsjb4OHi6UQFifO7XtNC2IlEJ1ozIFxw==}
@@ -2597,6 +2626,14 @@ packages:
     resolution: {integrity: sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg==}
     engines: {node: ^10 || ^12 || >=14}
 
+  preact-custom-element@4.6.0:
+    resolution: {integrity: sha512-RhPMuFpEIsbpEwnF+MoRbddzX0y8AdLn1dSpJSbpc6Nx3aSAPXSW9t2xAqQyGfEH1sl/bcsi8Vf0XbvStUy/Ug==}
+    peerDependencies:
+      preact: '>= 10.25.0 || >=11.0.0-0'
+
+  preact@10.28.0:
+    resolution: {integrity: sha512-rytDAoiXr3+t6OIP3WGlDd0ouCUG1iCWzkcY3++Nreuoi17y6T5i/zRhe6uYfoVcxq6YU+sBtJouuRDsq8vvqA==}
+
   pretty-bytes@7.1.0:
     resolution: {integrity: sha512-nODzvTiYVRGRqAOvE84Vk5JDPyyxsVk0/fbA/bq7RqlnhksGpset09XTxbpvLTIjoaF7K8Z8DG8yHtKGTPSYRw==}
     engines: {node: '>=20'}
@@ -2815,6 +2852,11 @@ packages:
 
   smob@1.5.0:
     resolution: {integrity: sha512-g6T+p7QO8npa+/hNx9ohv1E5pVCmWrVCUzUXJyLdMmftX6ER0oiWY/w9knEonLpnOp6b6FenKnMfR8gqwWdwig==}
+
+  solid-element@1.9.1:
+    resolution: {integrity: sha512-baJy6Qz27oAUgkPlqOf3Y+7RsBiuVQrS51Nrh1ddDbrqrNPvJbIvehpUsTzLNFb2ZHIoHuNnDg330go/ZKcRdg==}
+    peerDependencies:
+      solid-js: ^1.9.3
 
   solid-icons@1.1.0:
     resolution: {integrity: sha512-IesTfr/F1ElVwH2E1110s2RPXH4pujKfSs+koT8rwuTAdleO5s26lNSpqJV7D1+QHooJj18mcOiz2PIKs0ic+A==}
@@ -3912,6 +3954,13 @@ snapshots:
 
   '@poppinss/exception@1.2.2': {}
 
+  '@preact/signals-core@1.12.1': {}
+
+  '@preact/signals@2.5.1(preact@10.28.0)':
+    dependencies:
+      '@preact/signals-core': 1.12.1
+      preact: 10.28.0
+
   '@rolldown/binding-android-arm64@1.0.0-beta.53':
     optional: true
 
@@ -4743,6 +4792,8 @@ snapshots:
   commondir@1.0.1: {}
 
   compatx@0.2.0: {}
+
+  component-register@0.8.8: {}
 
   composed-offset-position@0.0.6(@floating-ui/utils@0.2.10):
     dependencies:
@@ -5734,6 +5785,12 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
+  preact-custom-element@4.6.0(preact@10.28.0):
+    dependencies:
+      preact: 10.28.0
+
+  preact@10.28.0: {}
+
   pretty-bytes@7.1.0: {}
 
   process-nextick-args@2.0.1: {}
@@ -6017,6 +6074,11 @@ snapshots:
   slash@5.1.0: {}
 
   smob@1.5.0: {}
+
+  solid-element@1.9.1(solid-js@1.9.10):
+    dependencies:
+      component-register: 0.8.8
+      solid-js: 1.9.10
 
   solid-icons@1.1.0(solid-js@1.9.10):
     dependencies:

@@ -11,10 +11,11 @@
   "dependencies": {
     "@notoko/definitions": "workspace:*",
     "@pinyin-pro/data": "catalog:",
+    "@preact/signals": "catalog:",
     "es-toolkit": "catalog:",
     "pinyin-pro": "catalog:",
-    "solid-icons": "catalog:",
-    "solid-js": "catalog:",
+    "preact": "catalog:",
+    "preact-custom-element": "catalog:",
     "ts-pattern": "catalog:",
     "zod": "catalog:"
   },

@@ -29,7 +29,7 @@ export type PluginStaticConfigurationTemplate = z //
 
 export const FunctionalityMethod = z.object({
   "demonstratorUi": z.tuple([
-    z.literal("solid"),
+    z.enum(["solid", "custom_element_registerer"]),
     z.string().regex(/^([a-z]+\.)+js$/i),
   ]),
 });
@@ -149,8 +149,12 @@ export type FunctionalityMethodInvocationExResult<T> =
   | ["ex_error", "functionality_method_not_found"]
   | ["ex_error", "exception", { message: string; trace?: string }];
 
-export interface FunctionalityMethodDemonstratorContext {
+export interface FunctionalityMethodDemonstratorContextForSolid {
   makeInvocationJsonResultDisplayer: () => Component<{
     result: FunctionalityMethodInvocationExResult<unknown>;
   }>;
+}
+
+export interface FunctionalityMethodDemonstratorContextForCustomElementRegisterer {
+  getInvocationJsonResultDisplayerTagName: () => string;
 }

@@ -1,4 +1,5 @@
-import { type Component, For } from "solid-js";
+import { Fragment, type FunctionComponent } from "preact";
+import { Signal } from "@preact/signals";
 
 export interface ButtonTabEntry {
   name: string;
@@ -7,27 +8,26 @@ export interface ButtonTabEntry {
   onClick: () => void;
 }
 
-/**
- * TODO: this is copied from web UI. Maybe I should refactor this later to
- * deduplicate.
- */
-export const ButtonTabs: Component<{
-  tabs: () => ButtonTabEntry[];
-}> = ($props) => {
+export const ButtonTabs: FunctionComponent<{
+  $tabs: Signal<ButtonTabEntry[]>;
+}> = (props) => {
   return (
     <div role="tablist" class="tabs tabs-border">
-      <For each={$props.tabs()}>
-        {(tab) => (
+      {props.$tabs.value.map((tab) => (
+        <Fragment key={tab.name}>
           <button
             role="tab"
             class={`tab${tab.isActive ? " tab-active" : ""}`}
             disabled={tab.isDisabled}
-            onClick={tab.onClick}
+            onClick={(ev) => {
+              ev.preventDefault();
+              tab.onClick();
+            }}
           >
             {tab.name}
           </button>
-        )}
-      </For>
+        </Fragment>
+      ))}
     </div>
   );
 };

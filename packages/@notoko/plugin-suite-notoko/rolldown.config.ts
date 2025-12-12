@@ -12,7 +12,9 @@ const external = [
   "zod/v4",
   "ts-pattern",
   "es-toolkit",
-  "solid-js",
+  "preact",
+  "@preact/signals",
+  "preact-custom-element",
   /^(\.\/)?(\.\.\/)*resources\//,
 ];
 
@@ -89,9 +91,18 @@ export default defineConfig([
         output: {
           file: `dist/${id}/ui/${stem}.js`,
           format: "esm",
-          minify: true,
+          // minify: true,
         },
-        external,
+        transform: {
+          jsx: {
+            importSource: "preact",
+          },
+        },
+        // /**
+        //  * TODO: enable externalization again. prerequisite: an importmap for
+        //  * those dependencies in the web UI's frontend
+        //  */
+        // external,
         plugins: [
           license({
             thirdParty: {

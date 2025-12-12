@@ -179,7 +179,13 @@ function makeFunctionalityDurationPredictor(
           .with(["ok", P.select()], (x) => ["ok", DurationPrediction.parse(x)])
           .with(
             ["error", P.select()],
-            (msg) => ["error", "custom", `error from server: ${msg}`],
+            (
+              msg,
+            ) => [
+              "error",
+              "custom",
+              `error from server: ${JSON.stringify(msg)}`,
+            ],
           )
           .otherwise((
             data,
@@ -252,7 +258,13 @@ function makeFunctionalityProsodyGenerator(
           .with(["ok", P.select()], (x) => ["ok", ProsodyData.parse(x)])
           .with(
             ["error", P.select()],
-            (msg) => ["error", "custom", `error from server: ${msg}`],
+            (
+              msg,
+            ) => [
+              "error",
+              "custom",
+              `error from server: ${JSON.stringify(msg)}`,
+            ],
           )
           .otherwise((
             data,

@@ -19,11 +19,14 @@
       "shownName": "Phonemizer",
       "methods": {
         "phonemize": {
-          "demonstratorUi": ["solid", "DemonstratorPhonemizerPhonemize.js"]
+          "demonstratorUi": [
+            "custom_element_registerer",
+            "DemonstratorPhonemizerPhonemize.js"
+          ]
         },
         "validatePhoneme": {
           "demonstratorUi": [
-            "solid",
+            "custom_element_registerer",
             "DemonstratorPhonemizerValidatePhoneme.js"
           ]
         }
@@ -34,7 +37,7 @@
       "methods": {
         "predictDuration": {
           "demonstratorUi": [
-            "solid",
+            "custom_element_registerer",
             "DemonstratorDurationPredictorPredictDuration.js"
           ]
         }
@@ -45,7 +48,7 @@
       "methods": {
         "generateProsody": {
           "demonstratorUi": [
-            "solid",
+            "custom_element_registerer",
             "DemonstratorProsodyGeneratorGenerateProsody.js"
           ]
         }

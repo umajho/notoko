@@ -16,17 +16,22 @@ import { createAsync, useAction } from "@solidjs/router";
 import { usePrefersDark } from "@solid-primitives/media";
 import { VsError } from "solid-icons/vs";
 import { toast } from "solid-sonner";
+import { Dynamic } from "solid-js/web";
+import { customElement, noShadowDOM } from "solid-element";
 
 import {
   extractPartsFromFunctionalityDictionaryEntryFqn,
   type Functionality,
   FunctionalityDictionaryEntry,
+  FunctionalityDictionaryEntryFqn,
   type FunctionalityDictionaryEntryFqnParts,
   FunctionalityFqn,
   FunctionalityMethod,
-  type FunctionalityMethodDemonstratorContext,
+  type FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
+  type FunctionalityMethodDemonstratorContextForSolid,
   type FunctionalityMethodInvocationExResult,
   FunctionalityMethodName,
+  makeFunctionalityDictionaryEntryFqn,
   makeFunctionalityFqn,
   PluginConfigurationSingleton,
   type PluginId,
@@ -161,7 +166,7 @@ const FunctionalityDemonstratorInner: Component<{
 
   return (
     <>
-      <h1>${$props.fnDictEntry.shownName}: {$props.info.shownName}</h1>
+      <h1>{$props.fnDictEntry.shownName}: {$props.info.shownName}</h1>
       <span>
         FQN: <code>{$props.fqn}</code>
       </span>
@@ -196,13 +201,7 @@ const FunctionalityMethodDemonstrator: Component<{
 
   const importResult = createAsync(
     async (): Promise<
-      | Component<{
-        specification: unknown;
-        invoke: (specifier: unknown, input: unknown) => Promise<
-          FunctionalityMethodInvocationExResult<unknown>
-        >;
-        context: FunctionalityMethodDemonstratorContext;
-      }>
+      | unknown
       | "loading"
       | "error"
     > => {
@@ -218,7 +217,7 @@ const FunctionalityMethodDemonstrator: Component<{
             FunctionalityMethodName.parse($props.methodName),
             "demonstrator.js",
           ].join("/")
-        )).default;
+        ));
       } catch (e) {
         console.error(ERROR_TEXT, e);
         return "error";
@@ -226,10 +225,6 @@ const FunctionalityMethodDemonstrator: Component<{
     },
     { initialValue: "loading" },
   );
-
-  const context: FunctionalityMethodDemonstratorContext = {
-    makeInvocationJsonResultDisplayer: () => InvocationJsonResultDisplayer,
-  };
 
   const invokeFunctionalityMethod = useAction(invokeFunctionalityMethodAction);
 
@@ -253,18 +248,144 @@ const FunctionalityMethodDemonstrator: Component<{
         {match(importResult())
           .with("loading", () => <LoadingSpan size="lg" />)
           .with("error", () => <>{ERROR_TEXT}</>)
-          .with(P._, (Demonstrator) => (
-            <Demonstrator
-              specification={$props.info}
-              invoke={invoke}
-              context={context}
-            />
+          .with(P._, (module) => (
+            match($props.method.demonstratorUi[0])
+              .with("solid", () => (
+                <FunctionalityMethodDemonstratorInnerForSolid
+                  info={$props.info}
+                  Demonstrator={(module as any).default}
+                  invoke={invoke}
+                />
+              ))
+              .with(
+                "custom_element_registerer",
+                () => (
+                  <FunctionalityMethodDemonstratorInnerForCustomElementRegisterer
+                    info={$props.info}
+                    fnDictEntryParts={$props.fnDictEntryParts}
+                    methodName={$props.methodName}
+                    registerer={(module as any).default}
+                    invoke={invoke}
+                  />
+                ),
+              ).exhaustive()
           ))
           .exhaustive()}
       </div>
     </div>
   );
 };
+
+const FunctionalityMethodDemonstratorInnerForSolid: Component<{
+  info: Functionality["info"];
+  Demonstrator: Component<{
+    specification: unknown;
+    invoke: (specifier: unknown, input: unknown) => Promise<
+      FunctionalityMethodInvocationExResult<unknown>
+    >;
+    context: FunctionalityMethodDemonstratorContextForSolid;
+  }>;
+  invoke: (specifier: unknown, input: unknown) => Promise<
+    FunctionalityMethodInvocationExResult<unknown>
+  >;
+}> = ($props) => {
+  const context: FunctionalityMethodDemonstratorContextForSolid = {
+    makeInvocationJsonResultDisplayer: () => InvocationJsonResultDisplayer,
+  };
+
+  return (
+    <$props.Demonstrator
+      specification={$props.info}
+      invoke={$props.invoke}
+      context={context}
+    />
+  );
+};
+
+const FunctionalityMethodDemonstratorInnerForCustomElementRegisterer: Component<
+  {
+    info: Functionality["info"];
+    fnDictEntryParts: FunctionalityDictionaryEntryFqnParts;
+    methodName: FunctionalityMethodName;
+    registerer: (tagName: string) => void;
+    invoke: (specifier: unknown, input: unknown) => Promise<
+      FunctionalityMethodInvocationExResult<unknown>
+    >;
+  }
+> = ($props) => {
+  const context:
+    FunctionalityMethodDemonstratorContextForCustomElementRegisterer = {
+      getInvocationJsonResultDisplayerTagName: () =>
+        INVOCATION_JSON_RESULT_DISPLAYER_TAG_NAME,
+    };
+
+  const demonstratorTagNameManager = getDemonstratorTagNameManagerSingleton();
+  const tagName = demonstratorTagNameManager.getTagName(
+    makeFunctionalityDictionaryEntryFqn(
+      $props.fnDictEntryParts.pluginId,
+      $props.fnDictEntryParts.functionalityDictionaryEntryKey,
+    ),
+    $props.methodName,
+  );
+  if (!tagName.alreadyExists) {
+    $props.registerer(tagName.tagName);
+  }
+
+  return (
+    <Dynamic
+      component={tagName.tagName}
+      prop:specification={$props.info.specification}
+      prop:invoke={$props.invoke}
+      prop:context={context}
+    />
+  );
+};
+
+function getDemonstratorTagNameManagerSingleton(): DemonstratorTagNameManager {
+  // @ts-ignore
+  return window.demonstratorTagNameManager ??= new DemonstratorTagNameManager();
+}
+class DemonstratorTagNameManager {
+  #nextId = 1;
+  #fqnToId: Record<string, number> = {};
+
+  constructor() {
+    customElement(
+      INVOCATION_JSON_RESULT_DISPLAYER_TAG_NAME,
+      { result: "" },
+      (props: { result: string }) => {
+        noShadowDOM();
+        return (
+          <InvocationJsonResultDisplayer result={JSON.parse(props.result)} />
+        );
+      },
+    );
+  }
+
+  getTagName(
+    fqn: FunctionalityDictionaryEntryFqn,
+    methodName: FunctionalityMethodName,
+  ): {
+    tagName: string;
+    alreadyExists: boolean;
+  } {
+    const fqnString = JSON.stringify([fqn, methodName]);
+    let id = this.#fqnToId[fqnString];
+    if (id) return { tagName: this.#makeTagName(id), alreadyExists: true };
+
+    return {
+      tagName: this.#makeTagName(this.#fqnToId[fqnString] = this.#nextId++),
+      alreadyExists: false,
+    };
+  }
+
+  #makeTagName(id: number): string {
+    return `x-functionality-method-demonstrator-${id}`;
+  }
+}
+
+const INVOCATION_JSON_RESULT_DISPLAYER_TAG_NAME =
+  "x-functionality-method-invocation-json-result-displayer";
 
 const InvocationJsonResultDisplayer: Component<{
   result: FunctionalityMethodInvocationExResult<unknown>;

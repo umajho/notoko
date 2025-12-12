@@ -1,7 +1,10 @@
-import { type Component, createSignal, Show } from "solid-js";
+import { type FunctionComponent, h } from "preact";
+import { useEffect, useRef } from "preact/hooks";
+import { Signal, useComputed, useSignal } from "@preact/signals";
+import register from "preact-custom-element";
 
 import type {
-  FunctionalityMethodDemonstratorContext,
+  FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
   Language,
   PhonemeLexicon,
@@ -20,121 +23,147 @@ import {
   NumberInputThatCanBeFallbackToTextInput,
 } from "./shared/components-utils";
 
-const DemonstratorDurationPredictorPredictDuration: Component<{
-  specification: DurationPredictorSpecification;
-  invoke: (
-    specifier: DurationPredictorPredictDurationSpecifier,
-    input: DurationPredictorPredictDurationInput,
-  ) => Promise<
-    FunctionalityMethodInvocationExResult<
-      DurationPredictorPredictDurationOutput
-    >
-  >;
-  context: FunctionalityMethodDemonstratorContext;
-}> = ($props) => {
-  const [$selectedLanguage, set$selectedLanguage] = //
-    createSignal<Language | null>(
-      $props.specification
-        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null,
+export default function (tagName: string) {
+  register(DemonstratorDurationPredictorPredictDuration, tagName, [], {
+    shadow: false,
+  });
+}
+
+const DemonstratorDurationPredictorPredictDuration: FunctionComponent<{}> =
+  () => {
+    const $outerProps: Signal<
+      {
+        specification: DurationPredictorSpecification;
+        invoke: (
+          specifier: DurationPredictorPredictDurationSpecifier,
+          input: DurationPredictorPredictDurationInput,
+        ) => Promise<
+          FunctionalityMethodInvocationExResult<
+            DurationPredictorPredictDurationOutput
+          >
+        >;
+        context:
+          FunctionalityMethodDemonstratorContextForCustomElementRegisterer;
+      } | null
+    > = useSignal(null);
+
+    const $selectedLanguage = useSignal<Language | null>(null);
+    const $selectedPhonemeLexicon = useSignal<PhonemeLexicon | null>(null);
+
+    const $validSegsData = useSignal(null);
+
+    const $speed = useSignal(1);
+    const $isSpeedValid = useComputed(() => $speed.value > 0);
+
+    const $areInputsValid = useComputed(() =>
+      !!$validSegsData.value && $isSpeedValid.value
     );
-  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
-    createSignal<PhonemeLexicon | null>(null);
 
-  const [$validSegsData, set$validSegsData] = createSignal(null);
+    const $result = useSignal<
+      | FunctionalityMethodInvocationExResult<
+        DurationPredictorPredictDurationOutput
+      >
+      | null
+    >(null);
 
-  const [$speed, set$speed] = createSignal(1);
-  const $isSpeedValid = () => $speed() > 0;
+    async function handleSubmit(ev: Event) {
+      ev.preventDefault();
+      if ($result.value === "processing") return;
+      if (!$areInputsValid.value) return;
+      $result.value = "processing";
 
-  const $areInputsValid = () => !!$validSegsData() && $isSpeedValid();
-
-  const [$result, set$result] = createSignal<
-    | FunctionalityMethodInvocationExResult<
-      DurationPredictorPredictDurationOutput
-    >
-    | null
-  >(null);
-
-  async function handleSubmit(ev: Event) {
-    ev.preventDefault();
-    if ($result() === "processing") return;
-    if (!$areInputsValid()) return;
-    set$result("processing");
-
-    set$result(
-      await $props.invoke(
+      $result.value = await $outerProps.value!.invoke(
         {
-          language: $selectedLanguage()!,
-          phonemeLexicon: $selectedPhonemeLexicon()!,
+          language: $selectedLanguage.value!,
+          phonemeLexicon: $selectedPhonemeLexicon.value!,
         },
-        { phonemeSegments: $validSegsData()!, speed: $speed() },
-      ),
-    );
-  }
+        { phonemeSegments: $validSegsData.value!, speed: $speed.value },
+      );
+    }
 
-  const InvocationJsonResultDisplayer = $props
-    .context.makeInvocationJsonResultDisplayer();
+    const $invocationJsonResultDisplayerTagName = //
+      useSignal<string | null>(null);
 
-  return (
-    <div class="flex flex-col">
-      <form onSubmit={handleSubmit}>
-        <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
-          <legend class="fieldset-legend">Input</legend>
-          <div class="flex justify-between items-center">
-            <LanguageAndPhonemeLexiconSelector
-              selectedLanguage={$selectedLanguage()}
-              set$selectedLanguage={set$selectedLanguage}
-              supportedLanguageAndPhonemeLexiconCombinations={$props
-                .specification.supportedLanguageAndPhonemeLexiconCombinations}
-              selectedPhonemeLexicon={$selectedPhonemeLexicon()}
-              set$selectedPhonemeLexicon={set$selectedPhonemeLexicon}
-            />
-            <input
-              type="submit"
-              class="btn btn-primary"
-              disabled={!$areInputsValid()}
-            >
-              Submit
-            </input>
-          </div>
-          <fieldset class="fieldset">
-            <legend class="fieldset-legend">
-              Phoneme Segments
-              <Show when={!$validSegsData()}>
-                <span class="text-error text-xs italic">
-                  (*invalid)
-                </span>
-              </Show>
-            </legend>
-            <JsonTextarea placeholder="[…]" set$validData={set$validSegsData} />
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const xEl = ref.current!.parentElement;
+      $outerProps.value = {
+        specification: (xEl as any).specification,
+        invoke: (xEl as any).invoke,
+        context: (xEl as any).context,
+      };
+      $selectedLanguage.value = $outerProps.value.specification
+        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null;
+      $invocationJsonResultDisplayerTagName.value = $outerProps.value
+        .context.getInvocationJsonResultDisplayerTagName();
+    }, []);
+
+    return (
+      <div ref={ref} class="flex flex-col">
+        <form onSubmit={handleSubmit}>
+          <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+            <legend class="fieldset-legend">Input</legend>
+            <div class="flex justify-between items-center">
+              {$outerProps.value
+                ? (
+                  <LanguageAndPhonemeLexiconSelector
+                    $selectedLanguage={$selectedLanguage}
+                    supportedLanguageAndPhonemeLexiconCombinations={$outerProps
+                      .value
+                      .specification
+                      .supportedLanguageAndPhonemeLexiconCombinations}
+                    $selectedPhonemeLexicon={$selectedPhonemeLexicon}
+                  />
+                )
+                : <>TODO: LOADING</>}
+              <input
+                type="submit"
+                class="btn btn-primary"
+                disabled={!$areInputsValid.value}
+              >
+                Submit
+              </input>
+            </div>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">
+                Phoneme Segments
+                {(!$validSegsData.value) &&
+                  (
+                    <span class="text-error text-xs italic">
+                      (*invalid)
+                    </span>
+                  )}
+              </legend>
+              <JsonTextarea placeholder="[…]" $validData={$validSegsData} />
+            </fieldset>
+            <label class="floating-label">
+              <span>
+                Speed
+                {(!$isSpeedValid.value) &&
+                  (
+                    <span class="text-error text-xs italic">
+                      (*invalid)
+                    </span>
+                  )}
+              </span>
+              <NumberInputThatCanBeFallbackToTextInput
+                step={0.05}
+                min={0}
+                $value={$speed}
+              />
+            </label>
           </fieldset>
-          <label class="floating-label">
-            <span>
-              Speed
-              <Show when={!$isSpeedValid()}>
-                <span class="text-error text-xs italic">
-                  (*invalid)
-                </span>
-              </Show>
-            </span>
-            <NumberInputThatCanBeFallbackToTextInput
-              step={0.05}
-              min={0}
-              value={$speed()}
-              set$value={set$speed}
-            />
-          </label>
-        </fieldset>
-      </form>
-      <Show when={$result()}>
-        {($result) => (
-          <>
-            <h3>Result:</h3>
-            <InvocationJsonResultDisplayer result={$result()} />
-          </>
-        )}
-      </Show>
-    </div>
-  );
-};
-
-export default DemonstratorDurationPredictorPredictDuration;
+        </form>
+        {$result.value &&
+          (
+            <>
+              <h3>Result:</h3>
+              {$invocationJsonResultDisplayerTagName.value &&
+                h($invocationJsonResultDisplayerTagName.value, {
+                  result: JSON.stringify($result.value),
+                })}
+            </>
+          )}
+      </div>
+    );
+  };

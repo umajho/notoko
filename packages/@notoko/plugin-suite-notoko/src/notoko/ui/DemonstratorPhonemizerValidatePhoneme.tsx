@@ -1,7 +1,10 @@
-import { type Component, createSignal, For, Show } from "solid-js";
+import { type FunctionComponent, h } from "preact";
+import { useEffect, useRef } from "preact/hooks";
+import { type Signal, useSignal } from "@preact/signals";
+import register from "preact-custom-element";
 
 import type {
-  FunctionalityMethodDemonstratorContext,
+  FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
   PhonemeLexicon,
 } from "@notoko/definitions";
@@ -13,77 +16,101 @@ import type {
   PhonemizerValidatePhonemeSpecifier,
 } from "../definitions";
 
-const DemonstratorPhonemizerValidatePhoneme: Component<{
-  specification: PhonemizerSpecification;
-  invoke: (
-    specifier: PhonemizerValidatePhonemeSpecifier,
-    input: PhonemizerValidatePhonemeInput,
-  ) => Promise<
-    FunctionalityMethodInvocationExResult<PhonemizerValidatePhonemeOutput>
-  >;
-  context: FunctionalityMethodDemonstratorContext;
-}> = ($props) => {
-  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
-    createSignal<PhonemeLexicon | null>(
-      $props.specification.supportedOutputPhonemeLexica[0] ?? null,
-    );
-  const [$inputPhoneme, set$inputPhoneme] = createSignal<any>("");
+export default function (tagName: string) {
+  register(DemonstratorPhonemizerValidatePhoneme, tagName, [], {
+    shadow: false,
+  });
+}
 
-  const [$result, set$result] = createSignal<
-    | FunctionalityMethodInvocationExResult<PhonemizerValidatePhonemeOutput>
+const DemonstratorPhonemizerValidatePhoneme: FunctionComponent<{}> = () => {
+  const $outerProps: Signal<
+    {
+      specification: PhonemizerSpecification;
+      invoke: (
+        specifier: PhonemizerValidatePhonemeSpecifier,
+        input: PhonemizerValidatePhonemeInput,
+      ) => Promise<
+        FunctionalityMethodInvocationExResult<PhonemizerValidatePhonemeOutput>
+      >;
+      context: FunctionalityMethodDemonstratorContextForCustomElementRegisterer;
+    } | null
+  > = useSignal(null);
+
+  const $selectedPhonemeLexicon = useSignal<PhonemeLexicon | null>(null);
+  const $inputPhoneme = useSignal<any>("");
+
+  const $result = useSignal<
+    | FunctionalityMethodInvocationExResult<
+      PhonemizerValidatePhonemeOutput
+    >
     | null
   >(null);
 
   async function handleSubmit(ev: Event) {
     ev.preventDefault();
-    if ($result() === "processing") return;
-    set$result("processing");
-    set$result(
-      await $props.invoke(
-        { phonemeLexicon: $selectedPhonemeLexicon()! },
-        { phoneme: $inputPhoneme() },
-      ),
+    if ($result.value === "processing") return;
+    $result.value = "processing";
+    $result.value = await $outerProps.value!.invoke(
+      { phonemeLexicon: $selectedPhonemeLexicon.value! },
+      { phoneme: $inputPhoneme.value },
     );
   }
 
-  const InvocationJsonResultDisplayer = $props
-    .context.makeInvocationJsonResultDisplayer();
+  const $invocationJsonResultDisplayerTagName = //
+    useSignal<string | null>(null);
+
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const xEl = ref.current!.parentElement;
+    $outerProps.value = {
+      specification: (xEl as any).specification,
+      invoke: (xEl as any).invoke,
+      context: (xEl as any).context,
+    };
+    $selectedPhonemeLexicon.value = $outerProps.value.specification
+      .supportedOutputPhonemeLexica[0] ?? null;
+    $invocationJsonResultDisplayerTagName.value = $outerProps.value
+      .context.getInvocationJsonResultDisplayerTagName();
+  }, []);
 
   return (
-    <div class="flex flex-col">
+    <div ref={ref} class="flex flex-col">
       <form onSubmit={handleSubmit}>
         <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
           <legend class="fieldset-legend">Input</legend>
           <div class="join w-full">
-            <select
-              class="join-item select w-fit"
-              onInput={(ev) =>
-                set$selectedPhonemeLexicon(ev.target.value as any)}
-            >
-              <option disabled selected={!$selectedPhonemeLexicon()}>
-                Phoneme Lexicon
-              </option>
-              <For
-                each={$props.specification.supportedOutputPhonemeLexica}
-              >
-                {(format) => (
-                  <option
-                    value={format}
-                    selected={$selectedPhonemeLexicon() === format}
-                  >
-                    {format}
+            {$outerProps.value
+              ? (
+                <select
+                  class="join-item select w-fit"
+                  onInput={(ev) =>
+                    $selectedPhonemeLexicon.value = ev.currentTarget
+                      .value as any}
+                >
+                  <option disabled selected={!$selectedPhonemeLexicon.value}>
+                    Phoneme Lexicon
                   </option>
-                )}
-              </For>
-            </select>
+                  {$outerProps.value.specification.supportedOutputPhonemeLexica
+                    .map((format) => (
+                      <option
+                        value={format}
+                        selected={$selectedPhonemeLexicon.value === format}
+                      >
+                        {format}
+                      </option>
+                    ))}
+                </select>
+              )
+              : <>TODO: LOADING</>}
+
             <label class="floating-label w-full">
               <span>Phoneme</span>
               <input
                 type="text"
                 placeholder="Phoneme"
                 class="join-item input input-md w-full"
-                value={$inputPhoneme()}
-                onInput={(ev) => set$inputPhoneme(ev.target.value)}
+                value={$inputPhoneme.value}
+                onInput={(ev) => $inputPhoneme.value = ev.currentTarget.value}
               />
             </label>
             <input type="submit" class="join-item btn btn-primary">
@@ -92,16 +119,16 @@ const DemonstratorPhonemizerValidatePhoneme: Component<{
           </div>
         </fieldset>
       </form>
-      <Show when={$result()}>
-        {($result) => (
+      {$result.value &&
+        (
           <>
             <h3>Result:</h3>
-            <InvocationJsonResultDisplayer result={$result()} />
+            {$invocationJsonResultDisplayerTagName.value &&
+              h($invocationJsonResultDisplayerTagName.value, {
+                result: JSON.stringify($result.value),
+              })}
           </>
         )}
-      </Show>
     </div>
   );
 };
-
-export default DemonstratorPhonemizerValidatePhoneme;

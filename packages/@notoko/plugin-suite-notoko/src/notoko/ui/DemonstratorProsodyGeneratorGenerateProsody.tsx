@@ -1,16 +1,12 @@
 import { match } from "ts-pattern";
 
-import {
-  type Component,
-  createMemo,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
+import { type FunctionComponent, h } from "preact";
+import { useEffect, useRef } from "preact/hooks";
+import { Signal, untracked, useComputed, useSignal } from "@preact/signals";
+import register from "preact-custom-element";
 
 import type {
-  FunctionalityMethodDemonstratorContext,
+  FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
   Language,
   PhonemeLexicon,
@@ -34,173 +30,206 @@ import {
   ButtonTabs,
 } from "./shared/components-rudimentary";
 
-const DemonstratorProsodyGeneratorGenerateProsody: Component<{
-  specification: ProsodyGeneratorSpecification;
-  invoke: (
-    specifier: ProsodyGeneratorGenerateProsodySpecifier,
-    input: ProsodyGeneratorGenerateProsodyInput,
-  ) => Promise<
-    FunctionalityMethodInvocationExResult<ProsodyGeneratorGenerateProsodyOutput>
-  >;
-  context: FunctionalityMethodDemonstratorContext;
-}> = ($props) => {
-  const [$selectedLanguage, set$selectedLanguage] = //
-    createSignal<Language | null>(
-      $props.specification
-        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null,
+export default function (tagName: string) {
+  register(DemonstratorProsodyGeneratorGenerateProsody, tagName, [], {
+    shadow: false,
+  });
+}
+
+const DemonstratorProsodyGeneratorGenerateProsody: FunctionComponent<{}> =
+  () => {
+    const $outerProps: Signal<
+      {
+        specification: ProsodyGeneratorSpecification;
+        invoke: (
+          specifier: ProsodyGeneratorGenerateProsodySpecifier,
+          input: ProsodyGeneratorGenerateProsodyInput,
+        ) => Promise<
+          FunctionalityMethodInvocationExResult<
+            ProsodyGeneratorGenerateProsodyOutput
+          >
+        >;
+        context:
+          FunctionalityMethodDemonstratorContextForCustomElementRegisterer;
+      } | null
+    > = useSignal(null);
+
+    const $selectedLanguage = useSignal<Language | null>(null);
+    const $selectedPhonemeLexicon = useSignal<PhonemeLexicon | null>(null);
+
+    const $validSegsData = useSignal(null);
+
+    const $durationMode = useSignal<"simple" | "custom">("custom");
+    const $durationModeTabEntries = useComputed<ButtonTabEntry[]>(() => [
+      {
+        name: "Custom",
+        isActive: $durationMode.value === "custom",
+        isDisabled:
+          $outerProps.value?.specification.durationInputSupport === "forbidden",
+        onClick: () => $durationMode.value = "custom",
+      },
+      {
+        name: "Simple",
+        isActive: $durationMode.value === "simple",
+        isDisabled:
+          $outerProps.value?.specification.durationInputSupport === "required",
+        onClick: () => $durationMode.value = "simple",
+      },
+    ]);
+
+    const $speed = useSignal(1);
+    const $isSpeedValid = useComputed(() => $speed.value > 0);
+    const $validDurationData = useSignal(null);
+    const $validDuration = useComputed(() =>
+      match($durationMode.value)
+        .returnType<ProsodyGeneratorGenerateProsodyInputDuration | null>()
+        .with("simple", () =>
+          $isSpeedValid.value ? ["simple", { speed: $speed.value }] : null)
+        .with("custom", () =>
+          $validDurationData.value
+            ? ["custom", $validDurationData.value!]
+            : null)
+        .exhaustive()
     );
-  const [$selectedPhonemeLexicon, set$selectedPhonemeLexicon] = //
-    createSignal<PhonemeLexicon | null>(null);
 
-  const [$validSegsData, set$validSegsData] = createSignal(null);
+    const $areInputsValid = useComputed(() =>
+      !!$validSegsData.value && !!$validDuration.value
+    );
 
-  const [$durationMode, set$durationMode] = createSignal<"simple" | "custom">(
-    $props.specification.durationInputSupport === "forbidden"
-      ? "simple"
-      : "custom",
-  );
-  const $durationModeTabEntries = createMemo<ButtonTabEntry[]>(() => [
-    {
-      name: "Custom",
-      isActive: $durationMode() === "custom",
-      isDisabled: $props.specification.durationInputSupport === "forbidden",
-      onClick: () => set$durationMode("custom"),
-    },
-    {
-      name: "Simple",
-      isActive: $durationMode() === "simple",
-      isDisabled: $props.specification.durationInputSupport === "required",
-      onClick: () => set$durationMode("simple"),
-    },
-  ]);
+    const $result = useSignal<
+      | FunctionalityMethodInvocationExResult<
+        ProsodyGeneratorGenerateProsodyOutput
+      >
+      | null
+    >(null);
 
-  const [$speed, set$speed] = createSignal(1);
-  const $isSpeedValid = () => $speed() > 0;
-  const [$validDurationData, set$validDurationData] = createSignal(null);
-  const $validDuration = createMemo(() =>
-    match($durationMode())
-      .returnType<ProsodyGeneratorGenerateProsodyInputDuration | null>()
-      .with("simple", () =>
-        $isSpeedValid() ? ["simple", { speed: $speed() }] : null)
-      .with("custom", () =>
-        $validDurationData() ? ["custom", $validDurationData()!] : null)
-      .exhaustive()
-  );
+    async function handleSubmit(ev: Event) {
+      ev.preventDefault();
+      if ($result.value === "processing") return;
+      if (!$areInputsValid.value) return;
+      $result.value = "processing";
 
-  const $areInputsValid = () => !!$validSegsData() && !!$validDuration();
-
-  const [$result, set$result] = createSignal<
-    | FunctionalityMethodInvocationExResult<
-      ProsodyGeneratorGenerateProsodyOutput
-    >
-    | null
-  >(null);
-
-  async function handleSubmit(ev: Event) {
-    ev.preventDefault();
-    if ($result() === "processing") return;
-    if (!$areInputsValid()) return;
-    set$result("processing");
-
-    set$result(
-      await $props.invoke(
+      $result.value = await $outerProps.value!.invoke(
         {
-          language: $selectedLanguage()!,
-          phonemeLexicon: $selectedPhonemeLexicon()!,
+          language: $selectedLanguage.value!,
+          phonemeLexicon: $selectedPhonemeLexicon.value!,
         },
-        { phonemeSegments: $validSegsData()!, duration: $validDuration()! },
-      ),
-    );
-  }
+        {
+          phonemeSegments: $validSegsData.value!,
+          duration: $validDuration.value!,
+        },
+      );
+    }
 
-  const InvocationJsonResultDisplayer = $props
-    .context.makeInvocationJsonResultDisplayer();
+    const $invocationJsonResultDisplayerTagName = //
+      useSignal<string | null>(null);
 
-  return (
-    <div class="flex flex-col">
-      <form onSubmit={handleSubmit}>
-        <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
-          <legend class="fieldset-legend">Input</legend>
-          <div class="flex justify-between items-center">
-            <LanguageAndPhonemeLexiconSelector
-              selectedLanguage={$selectedLanguage()}
-              set$selectedLanguage={set$selectedLanguage}
-              supportedLanguageAndPhonemeLexiconCombinations={$props
-                .specification.supportedLanguageAndPhonemeLexiconCombinations}
-              selectedPhonemeLexicon={$selectedPhonemeLexicon()}
-              set$selectedPhonemeLexicon={set$selectedPhonemeLexicon}
-            />
-            <input
-              type="submit"
-              class="btn btn-primary"
-              disabled={!$areInputsValid()}
-            >
-              Submit
-            </input>
-          </div>
-          <fieldset class="fieldset">
-            <legend class="fieldset-legend">
-              Phoneme Segments
-              <Show when={!$validSegsData()}>
-                <span class="text-error text-xs italic">
-                  (*invalid)
-                </span>
-              </Show>
-            </legend>
-            <JsonTextarea placeholder="[…]" set$validData={set$validSegsData} />
-          </fieldset>
+    const ref = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      const xEl = ref.current!.parentElement;
+      $outerProps.value = {
+        specification: (xEl as any).specification,
+        invoke: (xEl as any).invoke,
+        context: (xEl as any).context,
+      };
+      $selectedLanguage.value = $outerProps.value.specification
+        .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null;
+      $durationMode.value =
+        $outerProps.value.specification.durationInputSupport === "forbidden"
+          ? "simple"
+          : "custom";
+      $invocationJsonResultDisplayerTagName.value = $outerProps.value
+        .context.getInvocationJsonResultDisplayerTagName();
+    }, []);
+
+    return (
+      <div ref={ref} class="flex flex-col">
+        <form onSubmit={handleSubmit}>
           <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
-            <legend class="fieldset-legend">Duration</legend>
-            <ButtonTabs tabs={$durationModeTabEntries} />
-            <Switch>
-              <Match when={$durationMode() === "custom"}>
-                <fieldset class="fieldset">
-                  <legend class="fieldset-legend">
-                    Duration Prediction
-                    <Show when={!$validDurationData()}>
-                      <span class="text-error text-xs italic">
-                        (*invalid)
-                      </span>
-                    </Show>
-                  </legend>
-                  <JsonTextarea
-                    placeholder='{ "durationTicks2d": …, "ticksPerSecond": … }'
-                    set$validData={set$validDurationData}
+            <legend class="fieldset-legend">Input</legend>
+            <div class="flex justify-between items-center">
+              {$outerProps.value
+                ? (
+                  <LanguageAndPhonemeLexiconSelector
+                    $selectedLanguage={$selectedLanguage}
+                    supportedLanguageAndPhonemeLexiconCombinations={$outerProps
+                      .value
+                      .specification
+                      .supportedLanguageAndPhonemeLexiconCombinations}
+                    $selectedPhonemeLexicon={$selectedPhonemeLexicon}
                   />
-                </fieldset>
-              </Match>
-              <Match when={$durationMode() === "simple"}>
-                <label class="floating-label">
-                  <span>
-                    Speed
-                    <Show when={!$isSpeedValid()}>
-                      <span class="text-error text-xs italic">
-                        (*invalid)
-                      </span>
-                    </Show>
-                  </span>
-                  <NumberInputThatCanBeFallbackToTextInput
-                    step={0.05}
-                    min={0}
-                    value={$speed()}
-                    set$value={set$speed}
-                  />
-                </label>
-              </Match>
-            </Switch>
+                )
+                : <>TODO: LOADING</>}
+              <input
+                type="submit"
+                class="btn btn-primary"
+                disabled={!$areInputsValid.value}
+              >
+                Submit
+              </input>
+            </div>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">
+                Phoneme Segments
+                {(!$validSegsData.value) &&
+                  (
+                    <span class="text-error text-xs italic">
+                      (*invalid)
+                    </span>
+                  )}
+              </legend>
+              <JsonTextarea placeholder="[…]" $validData={$validSegsData} />
+            </fieldset>
+            <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
+              <legend class="fieldset-legend">Duration</legend>
+              <ButtonTabs $tabs={$durationModeTabEntries} />
+              {match($durationMode.value)
+                .with("custom", () => (
+                  <fieldset class="fieldset">
+                    <legend class="fieldset-legend">
+                      Duration Prediction
+                      {(!$validDurationData.value) && (
+                        <span class="text-error text-xs italic">
+                          (*invalid)
+                        </span>
+                      )}
+                    </legend>
+                    <JsonTextarea
+                      placeholder='{ "durationTicks2d": …, "ticksPerSecond": … }'
+                      $validData={$validDurationData}
+                    />
+                  </fieldset>
+                )).with("simple", () => (
+                  <label class="floating-label">
+                    <span>
+                      Speed
+                      {(!$isSpeedValid.value) &&
+                        (
+                          <span class="text-error text-xs italic">
+                            (*invalid)
+                          </span>
+                        )}
+                    </span>
+                    <NumberInputThatCanBeFallbackToTextInput
+                      step={0.05}
+                      min={0}
+                      $value={$speed}
+                    />
+                  </label>
+                )).exhaustive()}
+            </fieldset>
           </fieldset>
-        </fieldset>
-      </form>
-      <Show when={$result()}>
-        {($result) => (
-          <>
-            <h3>Result:</h3>
-            <InvocationJsonResultDisplayer result={$result()} />
-          </>
-        )}
-      </Show>
-    </div>
-  );
-};
-
-export default DemonstratorProsodyGeneratorGenerateProsody;
+        </form>
+        {$result.value &&
+          (
+            <>
+              <h3>Result:</h3>
+              {$invocationJsonResultDisplayerTagName.value &&
+                h($invocationJsonResultDisplayerTagName.value, {
+                  result: JSON.stringify($result.value),
+                })}
+            </>
+          )}
+      </div>
+    );
+  };

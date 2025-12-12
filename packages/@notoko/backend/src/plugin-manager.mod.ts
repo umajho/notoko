@@ -338,7 +338,9 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     }
 
     const [uiType, uiFileName] = method.demonstratorUi;
-    if (uiType !== "solid") throw new Error("TODO");
+    if (!["solid", "custom_element_registerer"].includes(uiType)) {
+      throw new Error("TODO");
+    }
 
     try {
       // TODO: we know that since `uiFileName` is validated by zod, it must be
