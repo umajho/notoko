@@ -352,10 +352,10 @@ const FunctionalityItem: Component<{
           ?.[$dictEntryParts().functionalityDictionaryEntryKey];
         if (!entry) {
           set$typeName("…"); // TODO: error message?
-          return;
+        } else {
+          set$typeName(entry.shownName);
         }
-        return entry.shownName;
-      });
+      }).exhaustive();
   });
 
   return (
