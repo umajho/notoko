@@ -20,6 +20,7 @@ function makeSimpleFileStemSafeId<Brand extends PropertyKey>() {
     .min(1)
     .max(255)
     .regex(/^[\p{L}\p{M}\p{N}_.]+$/u)
+    .refine((str) => !str.includes("..") && !str.endsWith("."))
     .brand<Brand>();
 }
 /**
@@ -135,5 +136,43 @@ export function extractPluginInstanceFunctionalityKeyFromFqn(
   );
 }
 
+export const FunctionalityMethodName = //
+  makeSimpleFileStemSafeId<"FunctionalityMethodName">();
+export type FunctionalityMethodName = z.infer<typeof FunctionalityMethodName>;
+
 export const SINGLETON_PLUGIN_INSTANCE_KEY = PluginInstanceKey
   .parse("__singleton__");
+
+export const FunctionalityDictionaryEntryKey = //
+  makeSimpleFileStemSafeId<"FunctionalityDictionaryEntryKey">();
+export type FunctionalityDictionaryEntryKey = z //
+.infer<typeof FunctionalityDictionaryEntryKey>;
+
+export const FunctionalityDictionaryEntryFqn = z.string()
+  .brand<"FunctionalityDictionaryEntryFqn">();
+export type FunctionalityDictionaryEntryFqn = z //
+.infer<typeof FunctionalityDictionaryEntryFqn>;
+
+export function makeFunctionalityDictionaryEntryFqn(
+  pluginId: PluginId,
+  entryKey: FunctionalityDictionaryEntryKey,
+): FunctionalityDictionaryEntryFqn {
+  return FunctionalityDictionaryEntryFqn.parse(`${pluginId}:${entryKey}`);
+}
+
+export interface FunctionalityDictionaryEntryFqnParts {
+  pluginId: PluginId;
+  functionalityDictionaryEntryKey: FunctionalityDictionaryEntryKey;
+}
+export function extractPartsFromFunctionalityDictionaryEntryFqn(
+  fqn: FunctionalityDictionaryEntryFqn,
+): FunctionalityDictionaryEntryFqnParts {
+  const RX = /^(.+):(.+)$/;
+  const g = RX.exec(fqn);
+  if (!g) throw new Error("unreachable!");
+  return {
+    pluginId: PluginId.parse(g[1]),
+    functionalityDictionaryEntryKey: FunctionalityDictionaryEntryKey
+      .parse(g[2]),
+  };
+}

@@ -76,7 +76,7 @@ export const ButtonTabs: Component<{
 export const LoadingSpan: Component<{
   class?: string;
   flavor?: "spinner" | "dots";
-  size?: "xl";
+  size?: "lg" | "xl";
 }> = ($props) => {
   const flavorClass = () =>
     $props.flavor
@@ -85,7 +85,9 @@ export const LoadingSpan: Component<{
         | "loading-dots")
       : null;
   const sizeClass = () =>
-    $props.size ? (`loading-${$props.size}` satisfies "loading-xl") : null;
+    $props.size
+      ? (`loading-${$props.size}` satisfies "loading-lg" | "loading-xl")
+      : null;
 
   return (
     <span class={cls($props.class, "loading", flavorClass(), sizeClass())} />

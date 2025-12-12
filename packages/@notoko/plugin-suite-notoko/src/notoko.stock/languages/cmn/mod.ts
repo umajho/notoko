@@ -15,13 +15,18 @@ import fastspeech2PinyinRDataCsv from //
 "../../resources/fastspeech2-pinyin-r/processed.csv.json" with { type: "json" };
 
 import {
-  type IsValidPhonemeResult,
-  Language,
+  type FunctionalityMethodInvocationResult,
   LanguageWithScript,
   PhonemeLexicon,
-  type PhonemeSegment,
-  type PhonemizeResult,
 } from "@notoko/definitions";
+import {
+  PhonemizerPhonemizeInput,
+  PhonemizerPhonemizeOutput,
+  PhonemizerPhonemizeSpecifier,
+  PhonemizerValidatePhonemeInput,
+  PhonemizerValidatePhonemeOutput,
+  PhonemizerValidatePhonemeSpecifier,
+} from "../../../notoko/definitions";
 
 addDict(CompleteDict);
 
@@ -88,37 +93,36 @@ type PhonemizerSupportedOutputPhonemeLexicon = //
   z.infer<typeof PhonemizerSupportedOutputPhonemeLexicon>;
 
 export async function phonemize(
-  inputSpec: {
-    language: LanguageWithScript;
-    outputPhonemeLexicon: PhonemeLexicon;
-  },
-  input: {
-    text: string;
-  },
-): Promise<PhonemizeResult> {
-  const phonemeLexiconResult = PhonemizerSupportedOutputPhonemeLexicon
-    .safeParse(inputSpec.outputPhonemeLexicon);
-  if (!phonemeLexiconResult.success) {
-    return ["error", "unsupported_output_phoneme_lexicon"];
-  }
+  specifier_: unknown,
+  input_: unknown,
+): Promise<FunctionalityMethodInvocationResult<PhonemizerPhonemizeOutput>> {
+  const specifier = PhonemizerPhonemizeSpecifier.parse(specifier_);
+  const input = PhonemizerPhonemizeInput.parse(input_);
 
-  return match(inputSpec.language)
-    .returnType<PhonemizeResult>()
+  return match(specifier.language)
+    .returnType<
+      FunctionalityMethodInvocationResult<PhonemizerPhonemizeOutput>
+    >()
     .with(LANGUAGE_WITH_SCRIPT_MAP["cmn-Hans"], () => {
       return phonemizeStandard(input.text, {
-        phonemeLexicon: phonemeLexiconResult.data,
+        phonemeLexicon: specifier.outputPhonemeLexicon,
       });
     })
     .otherwise(() => {
-      return ["error", "unsupported_input_language"];
+      return ["error", "custom", `unsupported language: ${specifier.language}`];
     });
 }
 
-export function isValidPhoneme(
-  spec: { phonemeLexicon: PhonemeLexicon },
-  input: { phoneme: string },
-): IsValidPhonemeResult {
-  switch (spec.phonemeLexicon) {
+export async function validatePhoneme(
+  specifier_: unknown,
+  input_: unknown,
+): Promise<
+  FunctionalityMethodInvocationResult<PhonemizerValidatePhonemeOutput>
+> {
+  const specifier = PhonemizerValidatePhonemeSpecifier.parse(specifier_);
+  const input = PhonemizerValidatePhonemeInput.parse(input_);
+
+  switch (specifier.phonemeLexicon) {
     case PHONEME_LEXICON_MAP["fastspeech2-pinyin-r"]: {
       if (
         input.phoneme === "rr" ||
@@ -127,19 +131,23 @@ export function isValidPhoneme(
           fastspeech2PinyinRValidPhonemes
             .finals.has(input.phoneme.slice(0, -1)))
       ) {
-        return ["ok", true];
+        return ["ok", { isValid: true }];
       }
-      return ["ok", false];
+      return ["ok", { isValid: false }];
     }
     default:
-      return ["error", "unsupported_phoneme_lexicon"];
+      return [
+        "error",
+        "custom",
+        `unsupported phoneme lexicon: ${specifier.phonemeLexicon}`,
+      ];
   }
 }
 
 function phonemizeStandard(
   text: string,
   opts: { phonemeLexicon: PhonemizerSupportedOutputPhonemeLexicon },
-): ["ok", PhonemeSegment[]] {
+): ["ok", PhonemizerPhonemizeOutput] {
   switch (opts.phonemeLexicon) {
     case "fastspeech2-pinyin-r":
       const segs = pinyin(text, { toneType: "num", type: "all" })
@@ -153,7 +161,16 @@ function phonemizeStandard(
             case "ng":
               // Unfortunately, `fastspeech2-pinyin-r` does not cover `ng`, so
               // we have to map it to `en` here. We will special-case this in
-              // notoko-sync. (for `嗯`: `en` -> `:n` instead of `@ :n`.)
+              // notoko-sync. Pseudo code of such special-casing in Elixir:
+              //
+              // ``` elixir
+              // case seg do
+              //   # Tones are removed before, so `x` is toneless.
+              //   %{phonemes: [x], text: text } when x == "en" ->
+              //     case text, do: ("嗯" -> ":n"; _ -> "@ :n")
+              //   # …
+              // end
+              // ```
               return { text: origin, phonemes: ["en" + tone] };
             case "ar":
               // pinyin-pro converts `二` to `ar4`, whereas FastSpeech2's
@@ -162,8 +179,17 @@ function phonemizeStandard(
               // doesn't seem to be trained enough, leading to weird pitch
               // results.) Although `ar4` sounds more accurate to me, I have to
               // covert it to `er4` here. Though, as before, we will special-
-              // case this in notoko-sync. (for everthing other than `二`: `er4`
-              // -> `` @ r\` `` instead of `` a r\` ``.)
+              // case this in notoko-sync. Pseudo code of such special-casing in
+              // Elixir:
+              //
+              // ``` elixir
+              // case seg do
+              //   # Tones are removed before, so `x` is toneless.
+              //   %{phonemes: [x], text: text } when x == "er" ->
+              //     # Yeah, “二” is not the one paired with `a …`.
+              //     case text, do: ("二" -> "@ r\\`", _ -> "a r\\`")
+              // end
+              // ```
               return { text: origin, phonemes: ["er" + tone] };
           }
 
@@ -178,7 +204,7 @@ function phonemizeStandard(
 
           return { text: origin, phonemes };
         });
-      return ["ok", segs];
+      return ["ok", { phonemeSegments: segs }];
     default:
       // opts.phonemeLexicon satisfies never; // FIXME
       throw new Error("unreachable!");

@@ -70,7 +70,7 @@ catalogs:
       specifier: ^3.6.0
       version: 3.6.0
     solid-icons:
-      specifier: ^1.1.0
+      specifier: 1.1.0
       version: 1.1.0
     solid-js:
       specifier: 1.9.10
@@ -207,6 +207,10 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+    devDependencies:
+      solid-js:
+        specifier: 'catalog:'
+        version: 1.9.10
 
   packages/@notoko/plugin-suite-notoko:
     dependencies:
@@ -216,9 +220,18 @@ importers:
       '@pinyin-pro/data':
         specifier: 'catalog:'
         version: 1.2.0
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.42.0
       pinyin-pro:
         specifier: 'catalog:'
         version: 3.27.0
+      solid-icons:
+        specifier: 'catalog:'
+        version: 1.1.0(solid-js@1.9.10)
+      solid-js:
+        specifier: 'catalog:'
+        version: 1.9.10
       ts-pattern:
         specifier: 'catalog:'
         version: 5.9.0

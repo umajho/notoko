@@ -1,5 +1,8 @@
 import {
   definePluginHandlers,
+  FunctionalityDictionaryEntryKey,
+  makeFunctionalityDictionaryEntryFqn,
+  PluginId,
   PluginInstanceFunctionalityKey,
 } from "@notoko/definitions";
 
@@ -9,18 +12,22 @@ export default definePluginHandlers({
   entry: (ctx) => {
     ctx.setFunctionalities({
       [PluginInstanceFunctionalityKey.parse("languages.cmn.phonemizer")]: {
-        type: "functionality:phonemizer",
         info: {
+          dictionaryEntryFqn: makeFunctionalityDictionaryEntryFqn(
+            PluginId.parse("notoko"),
+            FunctionalityDictionaryEntryKey.parse("phonemizer"),
+          ),
           shownName: "Builtin Mandarin",
-          associatedType: "functionality:phonemizer",
           specification: {
             supportedLanguages: langCmn.phonemizerSupportedInputLanguages,
             supportedOutputPhonemeLexica:
               langCmn.phonemizerSupportedOutputPhonemeLexica,
           },
         },
-        phonemize: langCmn.phonemize,
-        isValidPhoneme: langCmn.isValidPhoneme,
+        methods: {
+          phonemize: langCmn.phonemize,
+          validatePhoneme: langCmn.validatePhoneme,
+        },
       },
     });
   },

@@ -24,7 +24,7 @@ catalog:
   rolldown: 1.0.0-beta.53
   rollup-plugin-copy: ^3.5.0
   rollup-plugin-license: ^3.6.0
-  solid-icons: ^1.1.0
+  solid-icons: 1.1.0
   solid-js: 1.9.10
   solid-sonner: ^0.2.8
   tailwindcss: ^4.0.7

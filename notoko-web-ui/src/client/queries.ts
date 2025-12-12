@@ -1,6 +1,10 @@
 import { query } from "@solidjs/router";
 
-import type { PluginId } from "@notoko/definitions";
+import type {
+  FunctionalityDictionaryEntryKey,
+  FunctionalityMethodName,
+  PluginId,
+} from "@notoko/definitions";
 
 import { getPluginManagerSingleton } from "./singletons-use-server";
 
@@ -12,4 +16,25 @@ export const getPluginInstaceKeyRecommendation = query(
     return pm.getPluginInstanceKeyRecommendationFor(pluginId, staticConfig);
   },
   "getPluginInstaceKeyRecommendation",
+);
+
+export const getFunctionalityDemonstratorMethodUiSourceCode = query(
+  async (
+    dictPluginId: PluginId,
+    functionalityDictionaryEntryKey: FunctionalityDictionaryEntryKey,
+    methodName: FunctionalityMethodName,
+  ) => {
+    const resp = await fetch(
+      [
+        "/api/plugins/",
+        dictPluginId,
+        "functionality-dictionary",
+        functionalityDictionaryEntryKey,
+        "methods",
+        methodName,
+        "demonstrator.js",
+      ].join("/"),
+    );
+  },
+  "getFunctionalityDemonstratorMethodUiSourceCode",
 );

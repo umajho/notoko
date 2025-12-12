@@ -1,20 +1,20 @@
+import { match, P } from "ts-pattern";
+
 import {
   type Component,
+  createEffect,
   createMemo,
+  createSignal,
   For,
   type JSX,
   Match,
   Switch,
 } from "solid-js";
-import {
-  A,
-  type RouteSectionProps,
-  useLocation,
-  useParams,
-} from "@solidjs/router";
+import { A, type RouteSectionProps, useLocation } from "@solidjs/router";
 import { VsAdd, VsError, VsLoading, VsUnverified } from "solid-icons/vs";
 
 import {
+  extractPartsFromFunctionalityDictionaryEntryFqn,
   extractPluginInstanceFunctionalityKeyFromFqn,
   type Functionality,
   FunctionalityFqn,
@@ -24,46 +24,14 @@ import {
   SINGLETON_PLUGIN_INSTANCE_KEY,
 } from "@notoko/definitions";
 import {
-  urlDecodeFromSafePathSegment,
-  UrlEncodedSafePathSegment,
   urlEncodeToSafePathSegment,
 } from "@notoko/utils/path-segment-url-encoding";
 
 import { cls } from "~/utils/cls";
 import { stringToNull } from "~/utils/misc";
 import { LoadingSpan } from "~/components/ui/rudimentary";
-import { getFunctionalityTypeDisplayName } from "~/components/tab-runtime/FunctionalityDemonstrator";
 import { getLiveQueryingClientSingleton } from "~/client/singletons";
-
-export function useRuntimePagePluginsTabParams() {
-  const params = useParams();
-  const $selectedPluginId = () =>
-    params.pluginId ? PluginId.parse(params.pluginId) : null;
-  const $selectedPluginInstanceKey = () =>
-    params.pluginInstanceKeyEncoded
-      ? PluginInstanceKey.parse(
-        urlDecodeFromSafePathSegment(
-          UrlEncodedSafePathSegment.parse(params.pluginInstanceKeyEncoded),
-        ),
-      )
-      : null;
-  const $selectedPluginInstanceFunctionalityKey = () =>
-    params.pluginInstanceFunctionalityKeyEncoded
-      ? PluginInstanceFunctionalityKey.parse(
-        urlDecodeFromSafePathSegment(
-          UrlEncodedSafePathSegment.parse(
-            params.pluginInstanceFunctionalityKeyEncoded,
-          ),
-        ),
-      )
-      : null;
-
-  return {
-    $selectedPluginId,
-    $selectedPluginInstanceKey,
-    $selectedPluginInstanceFunctionalityKey,
-  };
-}
+import { useRuntimePagePluginsTabParams } from "~/utils/routing";
 
 export default function Layout($props: RouteSectionProps) {
   return (
@@ -346,6 +314,8 @@ const FunctionalityItem: Component<{
   functionalityFqn: FunctionalityFqn;
   functionalityInfo: Functionality["info"];
 }> = ($props) => {
+  const lqClient = getLiveQueryingClientSingleton();
+
   const functionalityKey = createMemo(() =>
     extractPluginInstanceFunctionalityKeyFromFqn($props.functionalityFqn)
   );
@@ -359,8 +329,34 @@ const FunctionalityItem: Component<{
     functionalityKey() ===
       $props.selectedPluginInstanceFunctionalityKey;
 
-  const typeName = () =>
-    getFunctionalityTypeDisplayName($props.functionalityInfo.associatedType);
+  const $dictEntryParts = createMemo(() =>
+    extractPartsFromFunctionalityDictionaryEntryFqn(
+      $props.functionalityInfo.dictionaryEntryFqn,
+    )
+  );
+  const $dictPluginInfo = createMemo(() =>
+    lqClient.queryPluginInfo($dictEntryParts().pluginId)()
+  );
+
+  const [$typeName, set$typeName] = createSignal("…");
+  createEffect(() => {
+    match($dictPluginInfo())
+      // TODO: error message if not "loading"?
+      .with(P.string, () => set$typeName("…"))
+      .with(P._, (dictPluginInfo) => {
+        if (dictPluginInfo.type !== "plugin:singleton") {
+          set$typeName("…"); // TODO: error message?
+          return;
+        }
+        const entry = dictPluginInfo.functionalityDictionary
+          ?.[$dictEntryParts().functionalityDictionaryEntryKey];
+        if (!entry) {
+          set$typeName("…"); // TODO: error message?
+          return;
+        }
+        return entry.shownName;
+      });
+  });
 
   return (
     <li>
@@ -368,7 +364,7 @@ const FunctionalityItem: Component<{
         class={cls($isActive() && "menu-active")}
         href={`/runtime/plugins/${$props.pluginId}/instances/${$encodedInstanceKey()}/functionalities/${$encodedFunctionalityKey()}`}
       >
-        {typeName()}: {$props.functionalityInfo.shownName}
+        {$typeName()}: {$props.functionalityInfo.shownName}
       </A>
     </li>
   );

@@ -3,9 +3,7 @@ import * as z from "zod/v4";
 /**
  * ISO 639-3.
  */
-export const Language = z.string()
-  .regex(/^[a-z]{3}$/)
-  .brand("Language");
+export const Language = z.string().regex(/^[a-z]{3}$/).brand<"Language">();
 export type Language = z.infer<typeof Language>;
 
 /**
@@ -13,12 +11,16 @@ export type Language = z.infer<typeof Language>;
  */
 export const LanguageWithScript = z.string()
   .regex(/^[a-z]{3}-[A-Z][a-z]{3}$/)
-  .brand("LanguageWithScript");
+  .brand<"LanguageWithScript">();
 export type LanguageWithScript = z.infer<typeof LanguageWithScript>;
 
-export const PhonemeLexicon = z.string().brand("PhonemeLexicon");
+export const PhonemeLexicon = z.string().brand<"PhonemeLexicon">();
 export type PhonemeLexicon = z.infer<typeof PhonemeLexicon>;
 
-export type PhonemeSegment = { text: string; phonemes: string[] };
+export const PhonemeSegment = z.object({
+  text: z.string(),
+  phonemes: z.array(z.string()),
+});
+export type PhonemeSegment = z.infer<typeof PhonemeSegment>;
 export const Duration2d = z.array(z.array(z.number().int().nonnegative()));
 export type Duration2d = z.infer<typeof Duration2d>;

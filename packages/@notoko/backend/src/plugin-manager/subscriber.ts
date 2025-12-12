@@ -5,6 +5,7 @@ import type {
   FunctionalityFqn,
   Plugin,
   PluginId,
+  PluginInfo,
   PluginInstanceKey,
   PluginStatus,
 } from "@notoko/definitions";
@@ -80,7 +81,7 @@ export class Subscriber {
 
   subscribePluginInfo(
     pluginId: PluginId,
-    cb: (v: Plugin["info"] | "not_found") => void,
+    cb: (v: PluginInfo | "not_found") => void,
     opts: { metadata: any },
   ) {
     const path = ["pluginInfo", pluginId];

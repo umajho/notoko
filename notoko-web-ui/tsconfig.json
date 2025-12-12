@@ -5,7 +5,6 @@
     "jsxImportSource": "solid-js",
     "allowJs": true,
     "types": ["vinxi/types/client", "node"],
-    "isolatedModules": true,
     "paths": {
       "~/*": ["./src/*"]
     }

@@ -1,16 +1,9 @@
 import { action } from "@solidjs/router";
 
 import type {
-  DurationPrediction,
-  DurationPredictResult,
-  Functionality,
   FunctionalityFqn,
-  IsValidPhonemeResult,
-  Language,
-  LanguageWithScript,
-  PhonemeLexicon,
-  PhonemeSegment,
-  PhonemizeResult,
+  FunctionalityMethodInvocationExResult,
+  FunctionalityMethodName,
   PluginId,
   PluginInstanceKey,
 } from "@notoko/definitions";
@@ -51,177 +44,31 @@ export const setPluginInstanceStaticConfigurationAction = action(
   },
 );
 
-export type FunctionalityActionResult<T> =
-  | ["ok", T]
-  | ["error", "functionality_not_found"]
-  | ["error", "functionality_type_mismatch", Functionality["type"]]
-  | ["error", "exception", { message: string; trace?: string }];
-
-export type PhonemizerPhonemizeActionInput = {
-  specificer: {
-    language: LanguageWithScript;
-    outputPhonemeLexicon: PhonemeLexicon;
-  };
-  input: { text: string };
-};
-
-export const phonemizerPhonemizeAction = action(
+export const invokeFunctionalityMethodAction = action(
   async (
-    fqn: FunctionalityFqn,
-    input: PhonemizerPhonemizeActionInput,
-  ): Promise<FunctionalityActionResult<PhonemizeResult>> => {
+    fnFqn: FunctionalityFqn,
+    methodName: FunctionalityMethodName,
+    specifier: unknown,
+    input: unknown,
+  ): Promise<FunctionalityMethodInvocationExResult<unknown>> => {
     "use server";
 
     const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityAccessorFor(fqn);
+    const accessor = pm.getFunctionalityAccessorFor(fnFqn);
 
     const functionality = accessor();
-    if (!functionality) return ["error", "functionality_not_found"];
-    if (functionality.type !== "functionality:phonemizer") {
-      return ["error", "functionality_type_mismatch", functionality.type];
-    }
+    if (!functionality) return ["ex_error", "functionality_not_found"];
+
+    const method = functionality.methods[methodName];
+    if (!method) return ["ex_error", "functionality_method_not_found"];
 
     try {
-      return [
-        "ok",
-        await functionality.phonemize(input.specificer, input.input),
-      ];
+      return await method(specifier, input);
     } catch (e) {
-      return [
-        "error",
-        "exception",
-        {
-          message: String(e),
-          trace: (e instanceof Error) ? e.stack : undefined,
-        },
-      ];
-    }
-  },
-);
-
-export type PhonemizerIsValidPhonemeActionInput = {
-  specifier: { phonemeLexicon: PhonemeLexicon };
-  input: { phoneme: string };
-};
-
-export const phonemizerIsValidPhonemeAction = action(
-  async (
-    fqn: FunctionalityFqn,
-    input: PhonemizerIsValidPhonemeActionInput,
-  ): Promise<FunctionalityActionResult<IsValidPhonemeResult>> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityAccessorFor(fqn);
-
-    const functionality = accessor();
-    if (!functionality) return ["error", "functionality_not_found"];
-    if (functionality.type !== "functionality:phonemizer") {
-      return ["error", "functionality_type_mismatch", functionality.type];
-    }
-
-    try {
-      return [
-        "ok",
-        await functionality.isValidPhoneme(input.specifier, input.input),
-      ];
-    } catch (e) {
-      return [
-        "error",
-        "exception",
-        {
-          message: String(e),
-          trace: (e instanceof Error) ? e.stack : undefined,
-        },
-      ];
-    }
-  },
-);
-
-export type DurationPredictorPredictDurationActionInput = {
-  specifier: { language: Language; phonemeLexicon: PhonemeLexicon };
-  input: {
-    phonemeSegments: PhonemeSegment[];
-    speed: number;
-  };
-};
-
-export const durationPredictorPredictDurationAction = action(
-  async (
-    fqn: FunctionalityFqn,
-    input: DurationPredictorPredictDurationActionInput,
-  ): Promise<FunctionalityActionResult<DurationPredictResult>> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityAccessorFor(fqn);
-
-    const functionality = accessor();
-    if (!functionality) return ["error", "functionality_not_found"];
-    if (functionality.type !== "functionality:duration_predictor") {
-      return ["error", "functionality_type_mismatch", functionality.type];
-    }
-
-    try {
-      return [
-        "ok",
-        await functionality.predictDuration(input.specifier, input.input),
-      ];
-    } catch (e) {
-      return [
-        "error",
-        "exception",
-        {
-          message: String(e),
-          trace: (e instanceof Error) ? e.stack : undefined,
-        },
-      ];
-    }
-  },
-);
-
-export type ProsodyGeneratorGenerateProsodyActionInput = {
-  specifier: { language: Language; phonemeLexicon: PhonemeLexicon };
-  input: {
-    phonemeSegments: PhonemeSegment[];
-    duration: ProsodyGeneratorGenerateProsodyActionInputDuration;
-  };
-};
-export type ProsodyGeneratorGenerateProsodyActionInputDuration =
-  | ["simple", { speed?: number }]
-  | ["custom", DurationPrediction];
-
-export const prosodyGeneratorGenerateProsodyAction = action(
-  async (
-    fqn: FunctionalityFqn,
-    input: ProsodyGeneratorGenerateProsodyActionInput,
-  ): Promise<FunctionalityActionResult<DurationPredictResult>> => {
-    "use server";
-
-    const pm = await getPluginManagerSingleton();
-    const accessor = pm.getFunctionalityAccessorFor(fqn);
-
-    const functionality = accessor();
-    if (!functionality) return ["error", "functionality_not_found"];
-    if (functionality.type !== "functionality:prosody_generator") {
-      return ["error", "functionality_type_mismatch", functionality.type];
-    }
-
-    try {
-      return [
-        "ok",
-        await functionality
-          .generateProsody(input.specifier, input.input),
-      ];
-    } catch (e) {
-      return [
-        "error",
-        "exception",
-        {
-          message: String(e),
-          trace: (e instanceof Error) ? e.stack : undefined,
-        },
-      ];
+      return ["ex_error", "exception", {
+        message: String(e),
+        trace: (e instanceof Error) ? e.stack : undefined,
+      }];
     }
   },
 );

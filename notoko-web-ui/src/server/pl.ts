@@ -1,6 +1,7 @@
 import * as z from "zod/v4";
 
 import {
+  FunctionalityDictionaryEntryFqn,
   FunctionalityFqn,
   PluginId,
   PluginInstanceKey,

@@ -2,7 +2,7 @@ import { type Component, createSignal } from "solid-js";
 import { Title } from "@solidjs/meta";
 
 import { makeTitle } from "~/utils/titles";
-import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
+import { useRuntimePagePluginsTabParams } from "~/utils/routing";
 import { FunctionalityDemonstrator } from "~/components/tab-runtime/FunctionalityDemonstrator";
 
 export default (() => {

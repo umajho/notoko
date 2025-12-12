@@ -5,9 +5,11 @@ import { reconcile } from "solid-js/store";
 
 import type {
   Functionality,
+  FunctionalityDictionaryEntryFqn,
   FunctionalityFqn,
   Plugin,
   PluginId,
+  PluginInfo,
   PluginInstanceKey,
   PluginStatus,
 } from "@notoko/definitions";
@@ -172,7 +174,7 @@ export class LiveQueryingClient {
 
   queryPluginInfo(
     pluginId: PluginId,
-  ): Accessor<Plugin["info"] | "not_found" | "loading"> {
+  ): Accessor<PluginInfo | "not_found" | "loading"> {
     return this.#query(["pluginInfo", pluginId], "loading");
   }
 

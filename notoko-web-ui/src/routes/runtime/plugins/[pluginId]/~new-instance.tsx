@@ -25,7 +25,7 @@ import { Jsfe } from "~/components/web-components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
 import { stringToNull } from "~/utils/misc";
-import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
+import { useRuntimePagePluginsTabParams } from "~/utils/routing";
 import { getLiveQueryingClientSingleton } from "~/client/singletons";
 import { getPluginInstaceKeyRecommendation } from "~/client/queries";
 import { newPluginInstanceAction } from "~/client/actions";

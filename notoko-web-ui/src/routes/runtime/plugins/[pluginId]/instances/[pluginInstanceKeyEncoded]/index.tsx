@@ -15,6 +15,7 @@ import {
   makePluginInstanceFqn,
   type Plugin,
   PluginId,
+  type PluginInfo,
   PluginInstanceKey,
 } from "@notoko/definitions";
 
@@ -22,7 +23,7 @@ import { Jsfe } from "~/components/web-components/Jsfe";
 import { cls } from "~/utils/cls";
 import { makeTitle } from "~/utils/titles";
 import { bothNonNull, stringToNull } from "~/utils/misc";
-import { useRuntimePagePluginsTabParams } from "~/routes/runtime/plugins";
+import { useRuntimePagePluginsTabParams } from "~/utils/routing";
 import { LoadingSpan } from "~/components/ui/rudimentary";
 import { getLiveQueryingClientSingleton } from "~/client/singletons";
 import {
@@ -87,7 +88,7 @@ const MainContent: Component<{
 const MainContentReady: Component<{
   pluginId: PluginId;
   pluginInstanceKey: PluginInstanceKey;
-  info: Plugin["info"];
+  info: PluginInfo;
 }> = ($props) => {
   const $prefersDark = usePrefersDark();
   const lqClient = getLiveQueryingClientSingleton();

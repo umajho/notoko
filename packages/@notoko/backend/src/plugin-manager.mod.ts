@@ -8,7 +8,10 @@ import * as _ from "es-toolkit";
 import micromatch from "micromatch";
 
 import {
+  extractPartsFromFunctionalityDictionaryEntryFqn,
   type Functionality,
+  FunctionalityDictionaryEntryFqn,
+  FunctionalityMethodName,
   type Plugin,
   PLUGIN_CONFIGURATION_FILE_STEM,
   PLUGIN_CONTAINER_CONFIGURATION_FILE_STEM,
@@ -53,9 +56,6 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     set$functionalitiesFor,
     getFunctionalityAccessorFor,
     getFunctionalityInfosAccessorFor,
-    $phonemizers,
-    $durationPredictors,
-    $prosodyGenerators,
   } = createRuntimeData();
 
   async function registerPluginsInFolder(folderPath: string) {
@@ -112,6 +112,7 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     await registerPlugin({
       [PluginId.parse(config.id)]: {
         type: config.type,
+        folderPath,
         info: config,
         handlers,
       },
@@ -308,6 +309,55 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     });
   }
 
+  function getFunctionalityDemonstratorMethodUiSourceCode(
+    fqn: FunctionalityDictionaryEntryFqn,
+    methodName: FunctionalityMethodName,
+  ):
+    | ["ok", string | null]
+    | ["error", "plugin_not_found"]
+    | ["error", "plugin_not_singleton"]
+    | ["error", "functionality_dictionary_entry_not_found"]
+    | ["error", "functionality_dictionary_entry_method_not_found"] {
+    const {
+      pluginId,
+      functionalityDictionaryEntryKey: entryKey,
+    } = extractPartsFromFunctionalityDictionaryEntryFqn(fqn);
+
+    const node = untrack(() => $runtimeTree())[pluginId];
+    if (!node) return ["error", "plugin_not_found"];
+    if (node.plugin.type !== "plugin:singleton") {
+      return ["error", "plugin_not_singleton"];
+    }
+
+    const entry = node.plugin.info.functionalityDictionary?.[entryKey];
+    if (!entry) return ["error", "functionality_dictionary_entry_not_found"];
+
+    const method = entry.methods[methodName];
+    if (!method) {
+      return ["error", "functionality_dictionary_entry_method_not_found"];
+    }
+
+    const [uiType, uiFileName] = method.demonstratorUi;
+    if (uiType !== "solid") throw new Error("TODO");
+
+    try {
+      // TODO: we know that since `uiFileName` is validated by zod, it must be
+      // a file name without any path parts, so `path` is safe, but maybe we
+      // can check that `path` here points somewhere inside $PWD to be sure.
+      const path = Path.join(node.plugin.folderPath, "ui", uiFileName);
+      const content = FS.readFileSync(path, { encoding: "utf-8" });
+      return ["ok", content];
+    } catch (e) {
+      if (
+        !(e instanceof Error) ||
+        (e as NodeJS.ErrnoException).code !== "ENOENT"
+      ) {
+        throw e;
+      }
+      return ["ok", null];
+    }
+  }
+
   return {
     registerPluginsInFolder,
     registerPlugin,
@@ -320,13 +370,11 @@ function makePluginManager(opts: { pluginDataPath: string }) {
     $instanceKeys,
     getFunctionalityAccessorFor,
     getFunctionalityInfosAccessorFor,
-    $phonemizers,
-    $durationPredictors,
-    $prosodyGenerators,
     setStaticConfigurationFor: persistentDataManager
       .setInstanceStaticConfiguration.bind(persistentDataManager),
     getStaticConfigurationAccessorFor: persistentDataManager
       .getInstanceStaticConfigurationAccessor.bind(persistentDataManager),
+    getFunctionalityDemonstratorMethodUiSourceCode,
   };
 }
 

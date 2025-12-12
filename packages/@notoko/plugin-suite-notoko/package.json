@@ -11,7 +11,10 @@
   "dependencies": {
     "@notoko/definitions": "workspace:*",
     "@pinyin-pro/data": "catalog:",
+    "es-toolkit": "catalog:",
     "pinyin-pro": "catalog:",
+    "solid-icons": "catalog:",
+    "solid-js": "catalog:",
     "ts-pattern": "catalog:",
     "zod": "catalog:"
   },

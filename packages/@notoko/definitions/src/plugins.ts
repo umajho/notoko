@@ -1,7 +1,11 @@
 import z from "zod/v4";
 
-import type { Functionality } from "./functionalities";
+import type { Component } from "solid-js";
+
 import {
+  FunctionalityDictionaryEntryFqn,
+  FunctionalityDictionaryEntryKey,
+  FunctionalityMethodName,
   PluginId,
   type PluginInstanceFunctionalityKey,
   PluginInstanceKey,
@@ -23,6 +27,21 @@ export const PluginStaticConfigurationTemplate = z.object({
 export type PluginStaticConfigurationTemplate = z //
 .infer<typeof PluginStaticConfigurationTemplate>;
 
+export const FunctionalityMethod = z.object({
+  "demonstratorUi": z.tuple([
+    z.literal("solid"),
+    z.string().regex(/^([a-z]+\.)+js$/i),
+  ]),
+});
+export type FunctionalityMethod = z.infer<typeof FunctionalityMethod>;
+
+export const FunctionalityDictionaryEntry = z.object({
+  shownName: z.string(),
+  methods: z.record(FunctionalityMethodName, FunctionalityMethod),
+});
+export type FunctionalityDictionaryEntry = z.//
+infer<typeof FunctionalityDictionaryEntry>;
+
 const PluginConfigurationBase = z.object({
   id: PluginId,
   version: z.string(),
@@ -34,6 +53,10 @@ type PluginConfigurationBase = z.infer<typeof PluginConfigurationBase>;
 export const PluginConfigurationSingleton = PluginConfigurationBase.extend({
   type: z.literal("plugin:singleton"),
   defaultStaticConfiguration: z.any(),
+  functionalityDictionary: z.record(
+    FunctionalityDictionaryEntryKey,
+    FunctionalityDictionaryEntry,
+  ).optional(),
 });
 export type PluginConfigurationSingleton = z.//
 infer<typeof PluginConfigurationSingleton>;
@@ -50,6 +73,7 @@ export const PluginConfiguration = z.discriminatedUnion("type", [
 export type PluginConfiguration = z.infer<typeof PluginConfiguration>;
 
 type PluginBase = {
+  folderPath: string;
   handlers: {
     entry: (ctx: PluginContext) => void;
     /**
@@ -97,4 +121,36 @@ export function definePluginHandlers(
   pluginHandlers: PluginHandlers,
 ): PluginHandlers {
   return pluginHandlers;
+}
+
+export interface Functionality {
+  info: {
+    dictionaryEntryFqn: FunctionalityDictionaryEntryFqn;
+    shownName: string;
+    specification: unknown;
+  };
+  methods: Record<
+    string,
+    (
+      specifier: unknown,
+      input: unknown,
+    ) => Promise<FunctionalityMethodInvocationResult<unknown>>
+  >;
+}
+
+export type FunctionalityMethodInvocationResult<T> =
+  | ["ok", T]
+  | ["error", "custom", Error | string];
+
+export type FunctionalityMethodInvocationExResult<T> =
+  | "processing"
+  | FunctionalityMethodInvocationResult<T>
+  | ["ex_error", "functionality_not_found"]
+  | ["ex_error", "functionality_method_not_found"]
+  | ["ex_error", "exception", { message: string; trace?: string }];
+
+export interface FunctionalityMethodDemonstratorContext {
+  makeInvocationJsonResultDisplayer: () => Component<{
+    result: FunctionalityMethodInvocationExResult<unknown>;
+  }>;
 }

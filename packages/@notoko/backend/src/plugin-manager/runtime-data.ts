@@ -8,6 +8,7 @@ import {
   makePluginInstanceFqn,
   type Plugin,
   PluginId,
+  type PluginInfo,
   PluginInstanceFunctionalityKey,
   PluginInstanceKey,
   type PluginStatus,
@@ -41,14 +42,14 @@ export interface RuntimeTreeNode {
 export function createRuntimeData() {
   const $runtimeTree = signal<Record<PluginId, RuntimeTreeNode>>({});
   const $pluginIds = signal<PluginId[]>([]);
-  const $infos = signal<Record<PluginId, Plugin["info"]>>({});
+  const $infos = signal<Record<PluginId, PluginInfo>>({});
   const $instanceKeys = //
     signal<Record<PluginId, null | PluginInstanceKey[]>>({});
   effect(() => {
     const runtimeTree = $runtimeTree();
 
     const newPluginIds = new Set<PluginId>();
-    const newInfos: Record<PluginId, Plugin["info"]> = {};
+    const newInfos: Record<PluginId, PluginInfo> = {};
     const newInstances: Record<PluginId, null | PluginInstanceKey[]> = {};
     for (const [pluginId_, node] of Object.entries(runtimeTree)) {
       const pluginId = pluginId_ as PluginId;
@@ -111,21 +112,6 @@ export function createRuntimeData() {
   }
 
   const $functionalities = signal<Record<string, Functionality>>({});
-  const $phonemizers = computed(() =>
-    _.pickBy($functionalities(), (x) => x.type === "functionality:phonemizer")
-  );
-  const $durationPredictors = computed(() =>
-    _.pickBy(
-      $functionalities(),
-      (x) => x.type === "functionality:duration_predictor",
-    )
-  );
-  const $prosodyGenerators = computed(() =>
-    _.pickBy(
-      $functionalities(),
-      (x) => x.type === "functionality:prosody_generator",
-    )
-  );
 
   function set$functionalitiesFor(
     pluginId: PluginId,
@@ -189,8 +175,5 @@ export function createRuntimeData() {
     getFunctionalityAccessorFor,
     getFunctionalityInfosAccessorFor,
     $functionalities,
-    $phonemizers,
-    $durationPredictors,
-    $prosodyGenerators,
   };
 }

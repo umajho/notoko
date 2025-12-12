@@ -19,7 +19,7 @@ export const UrlEncodedSafePathSegment = z.string()
   .refine((str) => !RESERVED_NAME_REGEX.test(str), {
     error: "cannot be reserved names!",
   })
-  .brand("UrlEncodedSafePathSegment");
+  .brand<"UrlEncodedSafePathSegment">();
 export type UrlEncodedSafePathSegment = z //
 .infer<typeof UrlEncodedSafePathSegment>;
 
