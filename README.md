@@ -14,12 +14,12 @@ both legal and ethical (See the FAQ section below for details.).
 
 | Name     | Path                     | Description                                                                                           |
 | -------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
-| notoflow | [./notoflow](./notoflow) | A workflow runtime                                                                                    |
-| notoko   | [./notoko](./notoko)     | Utilities to enable Software-Talk characters to speak more languages, using legal and ethical methods |
+| notoflow | [./notoflow](./notoflow) | a workflow runtime                                                                                    |
+| notoko   | [./notoko](./notoko)     | utilities to enable Software-Talk characters to speak more languages, using legal and ethical methods |
 
 ## Setup
 
-- Projects in this repository requires a modern version of [`node`] (see
+- Projects in this repository require a modern version of [`node`] (see
   [`.nvmrc`](./.nvmrc)).
   - If you have [`nvm`] installed:
     - You can run `nvm use` every time you open a new terminal inside this
@@ -30,7 +30,7 @@ both legal and ethical (See the FAQ section below for details.).
       otherwise VS Code may still pick up an older version when it launches a
       new integrated terminal. See:
       <https://stackoverflow.com/a/59443505/31276438>.
-- Projects in this repository relies on [`pnpm`], [`just`] and [`jq`].
+- Projects in this repository rely on [`pnpm`], [`just`] and [`jq`].
 - Stuffs under `notoko/prototyping/` have their own instructions on how to set
   them up.
 
