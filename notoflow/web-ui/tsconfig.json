@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "allowJs": true,
+    "types": ["vinxi/types/client", "node"],
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  }
+}

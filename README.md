@@ -1,18 +1,26 @@
-# Notoko
+# `notoflow` & `notoko` Monorepo
 
-This repository contains various utilities that <ruby>I<rt>Umaĵo</rt></ruby>:
+This repository contains projects <ruby>I<rt>Umaĵo</rt></ruby>:
 
 - built myself,
 - asked LLMs (GitHub Copilot) to build, or
-- adapted from other projects, with or without the help of LLMs,
+- adapted from other projects, with or without the help of LLMs.
 
-to enable Software-Talk characters — who do not natively speak Mandarin — to
-speak Mandarin in videos I (will) produce, using methods that are both legal and
-ethical (See the FAQ section below for details.).
+My motive is to enable Software-Talk characters — who do not natively speak
+Mandarin — to speak Mandarin in videos I (will) produce, using methods that are
+both legal and ethical (See the FAQ section below for details.).
+
+## Projects
+
+| Name     | Path                     | Description                                                                                           |
+| -------- | ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| notoflow | [./notoflow](./notoflow) | A workflow runtime                                                                                    |
+| notoko   | [./notoko](./notoko)     | Utilities to enable Software-Talk characters to speak more languages, using legal and ethical methods |
 
 ## Setup
 
-- This project requires a modern version of [`node`] (see [`.nvmrc`](./.nvmrc)).
+- Projects in this repository requires a modern version of [`node`] (see
+  [`.nvmrc`](./.nvmrc)).
   - If you have [`nvm`] installed:
     - You can run `nvm use` every time you open a new terminal inside this
       project's directory to ensure the correct Node.js version is used.
@@ -22,8 +30,9 @@ ethical (See the FAQ section below for details.).
       otherwise VS Code may still pick up an older version when it launches a
       new integrated terminal. See:
       <https://stackoverflow.com/a/59443505/31276438>.
-- This project relies on [`pnpm`], [`just`] and [`jq`].
-- Stuffs under `prototyping/` have their own instructions on how to set them up.
+- Projects in this repository relies on [`pnpm`], [`just`] and [`jq`].
+- Stuffs under `notoko/prototyping/` have their own instructions on how to set
+  them up.
 
 [`node`]: https://nodejs.org/
 [`nvm`]: https://github.com/nvm-sh/nvm
@@ -32,25 +41,6 @@ ethical (See the FAQ section below for details.).
 [`jq`]: https://jqlang.org/
 
 ## FAQ
-
-### Where is the name “Notoko” from?
-
-Originally, there was only `notoko-sync` (and the patches for fastspeech2).
-`notoko-sync` is a script for Synthesizer V — a singing synthesizer — that makes
-SynthV voicebanks speak by adjusting pitch settings. The script's name is a
-wordplay on another software called `KotonoSync`, which controls VOICEROID — a
-speech synthesizer — and makes VRoid voicebanks sing by adjusting pitch
-settings. Bonus: <ruby>ノート<rt>nōto</rt></ruby> means notes, just as
-<ruby>言<rt>koto</rt></ruby> means words.
-
-Later, when <ruby>I<rt>Umaĵo</rt></ruby> began making a video about what I had
-done, I found the experience of interacting with the modified FastSpeech2
-project solely through the CLI unsatisfying, so I started building the web UI.
-At that point, I decided to unify these related sub-projects under the shared
-prefix `notoko`.
-
-Note: I do not associate this project’s name with the Kotonoha sisters in any
-sense, even though I started this project because of them.
 
 ### How do <ruby>you<rt>Umaĵo</rt></ruby> define “legal and ethical” in this context?
 

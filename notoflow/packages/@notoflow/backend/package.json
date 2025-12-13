@@ -1,0 +1,23 @@
+{
+  "name": "@notoflow/backend",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "main": "lib.ts",
+  "types": "lib.ts",
+  "dependencies": {
+    "@notoflow/definitions": "workspace:*",
+    "@notoflow/utils": "workspace:*",
+    "alien-signals": "catalog:",
+    "es-toolkit": "catalog:",
+    "micromatch": "catalog:",
+    "ts-pattern": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/micromatch": "catalog:",
+    "@types/node": "catalog:"
+  }
+}
