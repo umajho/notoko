@@ -91,7 +91,7 @@ export default defineConfig([
         output: {
           file: `dist/${id}/ui/${stem}.js`,
           format: "esm",
-          // minify: true,
+          minify: true,
         },
         transform: {
           jsx: {
