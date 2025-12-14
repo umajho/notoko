@@ -1,7 +1,7 @@
 packages:
   - notoflow/web-ui
   - notoflow/packages/**/*
-  - packages/@notoko/*
+  - notoko/packages/**/*
 
 catalog:
   "@alenaksu/json-viewer": ^2.1.2
