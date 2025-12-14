@@ -6,16 +6,17 @@ import register from "preact-custom-element";
 import type {
   FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
-  LanguageWithScript,
-  PhonemeLexicon,
 } from "@notoflow/definitions";
 
 import type {
+  LanguageWithScript,
+  PhonemeLexicon,
   PhonemizerPhonemizeInput,
   PhonemizerPhonemizeOutput,
   PhonemizerPhonemizeSpecifier,
   PhonemizerSpecification,
 } from "../definitions";
+
 import { LanguageWithScriptAndPhonemeLexiconSelector } from "./shared/components-utils";
 
 export default function (tagName: string) {

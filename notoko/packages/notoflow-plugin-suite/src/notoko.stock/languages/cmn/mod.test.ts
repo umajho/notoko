@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { LanguageWithScript, PhonemeLexicon } from "@notoflow/definitions";
+import {
+  LanguageWithScript,
+  PhonemeLexicon,
+} from "../../../notoko/definitions";
 
 import { phonemize } from "./mod";
 

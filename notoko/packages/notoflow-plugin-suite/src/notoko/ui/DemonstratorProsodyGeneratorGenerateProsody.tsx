@@ -2,17 +2,17 @@ import { match } from "ts-pattern";
 
 import { type FunctionComponent, h } from "preact";
 import { useEffect, useRef } from "preact/hooks";
-import { Signal, untracked, useComputed, useSignal } from "@preact/signals";
+import { Signal, useComputed, useSignal } from "@preact/signals";
 import register from "preact-custom-element";
 
 import type {
   FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
-  Language,
-  PhonemeLexicon,
 } from "@notoflow/definitions";
 
 import type {
+  Language,
+  PhonemeLexicon,
   ProsodyGeneratorGenerateProsodyInput,
   ProsodyGeneratorGenerateProsodyInputDuration,
   ProsodyGeneratorGenerateProsodyOutput,

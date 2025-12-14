@@ -6,10 +6,10 @@ import register from "preact-custom-element";
 import type {
   FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
-  PhonemeLexicon,
 } from "@notoflow/definitions";
 
 import type {
+  PhonemeLexicon,
   PhonemizerSpecification,
   PhonemizerValidatePhonemeInput,
   PhonemizerValidatePhonemeOutput,

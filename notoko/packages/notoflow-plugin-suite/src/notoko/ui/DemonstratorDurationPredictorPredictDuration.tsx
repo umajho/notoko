@@ -6,8 +6,6 @@ import register from "preact-custom-element";
 import type {
   FunctionalityMethodDemonstratorContextForCustomElementRegisterer,
   FunctionalityMethodInvocationExResult,
-  Language,
-  PhonemeLexicon,
 } from "@notoflow/definitions";
 
 import type {
@@ -15,6 +13,8 @@ import type {
   DurationPredictorPredictDurationOutput,
   DurationPredictorPredictDurationSpecifier,
   DurationPredictorSpecification,
+  Language,
+  PhonemeLexicon,
 } from "../definitions";
 
 import {

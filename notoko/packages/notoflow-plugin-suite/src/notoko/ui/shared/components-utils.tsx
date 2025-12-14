@@ -12,7 +12,7 @@ import {
   Language,
   LanguageWithScript,
   PhonemeLexicon,
-} from "@notoflow/definitions";
+} from "../../definitions";
 
 export const NumberInputThatCanBeFallbackToTextInput: FunctionComponent<{
   step?: number;
