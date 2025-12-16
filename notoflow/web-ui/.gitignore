@@ -10,9 +10,6 @@ app.config.timestamp_*.js
 .env
 .env*.local
 
-# dependencies
-/node_modules
-
 # IDEs and editors
 /.idea
 .project
@@ -22,10 +19,6 @@ app.config.timestamp_*.js
 
 # Temp
 gitignore
-
-# System Files
-.DS_Store
-Thumbs.db
 
 # User Data
 /data
