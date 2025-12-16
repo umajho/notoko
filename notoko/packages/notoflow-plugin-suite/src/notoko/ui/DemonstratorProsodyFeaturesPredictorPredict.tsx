@@ -1,3 +1,6 @@
+import { match, P } from "ts-pattern";
+import * as z from "zod/v4";
+
 import { type FunctionComponent, h } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import { Signal, useComputed, useSignal } from "@preact/signals";
@@ -8,38 +11,46 @@ import type {
   FunctionalityMethodInvocationExResult,
 } from "@notoflow/definitions";
 
-import type {
-  DurationPredictorPredictDurationInput,
-  DurationPredictorPredictDurationOutput,
-  DurationPredictorPredictDurationSpecifier,
-  DurationPredictorSpecification,
-  Language,
-  PhonemeLexicon,
+import {
+  type DurationPrediction,
+  type EnergyPrediction,
+  type Language,
+  type PhonemeLexicon,
+  PhonemeSegment,
+  type PitchPrediction,
+  type ProsodyFeaturesPredictorPredictInput,
+  type ProsodyFeaturesPredictorPredictOutput,
+  type ProsodyFeaturesPredictorPredictSpecifier,
+  type ProsodyFeaturesPredictorSpecification,
 } from "../definitions";
 
 import {
   JsonTextarea,
   LanguageAndPhonemeLexiconSelector,
-  NumberInputThatCanBeFallbackToTextInput,
 } from "./shared/components-utils";
+import {
+  FieldsetPredictFeatureOptionsDuration,
+  FieldsetPredictFeatureOptionsEnergy,
+  FieldsetPredictFeatureOptionsPitch,
+} from "./shared/components-fieldsets";
 
 export default function (tagName: string) {
-  register(DemonstratorDurationPredictorPredictDuration, tagName, [], {
+  register(DemonstratorProsodyFeaturesPredictorPredict, tagName, [], {
     shadow: false,
   });
 }
 
-const DemonstratorDurationPredictorPredictDuration: FunctionComponent<{}> =
+const DemonstratorProsodyFeaturesPredictorPredict: FunctionComponent<{}> =
   () => {
     const $outerProps: Signal<
       {
-        specification: DurationPredictorSpecification;
+        specification: ProsodyFeaturesPredictorSpecification;
         invoke: (
-          specifier: DurationPredictorPredictDurationSpecifier,
-          input: DurationPredictorPredictDurationInput,
+          specifier: ProsodyFeaturesPredictorPredictSpecifier,
+          input: ProsodyFeaturesPredictorPredictInput,
         ) => Promise<
           FunctionalityMethodInvocationExResult<
-            DurationPredictorPredictDurationOutput
+            ProsodyFeaturesPredictorPredictOutput
           >
         >;
         context:
@@ -50,18 +61,26 @@ const DemonstratorDurationPredictorPredictDuration: FunctionComponent<{}> =
     const $selectedLanguage = useSignal<Language | null>(null);
     const $selectedPhonemeLexicon = useSignal<PhonemeLexicon | null>(null);
 
-    const $validSegsData = useSignal(null);
+    const $validSegsData = useSignal<PhonemeSegment[] | null>(null);
 
-    const $speed = useSignal(1);
-    const $isSpeedValid = useComputed(() => $speed.value > 0);
+    const $durationOptions = useSignal<
+      ["speed", number] | ["override", DurationPrediction] | "invalid"
+    >("invalid");
+    const $pitchOptions = useSignal<
+      ["simple", number] | ["override", PitchPrediction] | "invalid"
+    >("invalid");
+    const $energyOptions = useSignal<
+      ["simple", number] | ["override", EnergyPrediction] | "invalid"
+    >("invalid");
 
     const $areInputsValid = useComputed(() =>
-      !!$validSegsData.value && $isSpeedValid.value
+      !!$validSegsData.value && $durationOptions.value !== "invalid" &&
+      $pitchOptions.value !== "invalid" && $energyOptions.value !== "invalid"
     );
 
     const $result = useSignal<
       | FunctionalityMethodInvocationExResult<
-        DurationPredictorPredictDurationOutput
+        ProsodyFeaturesPredictorPredictOutput
       >
       | null
     >(null);
@@ -77,7 +96,31 @@ const DemonstratorDurationPredictorPredictDuration: FunctionComponent<{}> =
           language: $selectedLanguage.value!,
           phonemeLexicon: $selectedPhonemeLexicon.value!,
         },
-        { phonemeSegments: $validSegsData.value!, speed: $speed.value },
+        {
+          phonemeSegments: $validSegsData.value!,
+          featurePredictionOverrides: {
+            duration: match($durationOptions.value)
+              .with(["override", P.select()], (v) => v)
+              .otherwise(() => undefined),
+            pitch: match($pitchOptions.value)
+              .with(["override", P.select()], (v) => v)
+              .otherwise(() => undefined),
+            energy: match($energyOptions.value)
+              .with(["override", P.select()], (v) => v)
+              .otherwise(() => undefined),
+          },
+          controls: {
+            speed: match($durationOptions.value)
+              .with(["speed", P.select()], (v) => v)
+              .otherwise(() => undefined),
+            pitch: match($pitchOptions.value)
+              .with(["simple", P.select()], (v) => v)
+              .otherwise(() => undefined),
+            energy: match($energyOptions.value)
+              .with(["simple", P.select()], (v) => v)
+              .otherwise(() => undefined),
+          },
+        },
       );
     }
 
@@ -134,24 +177,25 @@ const DemonstratorDurationPredictorPredictDuration: FunctionComponent<{}> =
                     </span>
                   )}
               </legend>
-              <JsonTextarea placeholder="[…]" $validData={$validSegsData} />
-            </fieldset>
-            <label class="floating-label">
-              <span>
-                Speed
-                {(!$isSpeedValid.value) &&
-                  (
-                    <span class="text-error text-xs italic">
-                      (*invalid)
-                    </span>
-                  )}
-              </span>
-              <NumberInputThatCanBeFallbackToTextInput
-                step={0.05}
-                min={0}
-                $value={$speed}
+              <JsonTextarea
+                placeholder="[…]"
+                initialTextValue=""
+                onInputDataOrNullIfInvalid={(v) => $validSegsData.value = v}
+                dataSchemata={z.array(PhonemeSegment)}
               />
-            </label>
+            </fieldset>
+            <FieldsetPredictFeatureOptionsDuration
+              featurePredictionOverrideSupport="optional" // TODO
+              $options={$durationOptions}
+            />
+            <FieldsetPredictFeatureOptionsPitch
+              featurePredictionOverrideSupport="optional" // TODO
+              $options={$pitchOptions}
+            />
+            <FieldsetPredictFeatureOptionsEnergy
+              featurePredictionOverrideSupport="optional" // TODO
+              $options={$energyOptions}
+            />
           </fieldset>
         </form>
         {$result.value &&

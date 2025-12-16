@@ -32,13 +32,13 @@
         }
       }
     },
-    "duration_predictor": {
-      "shownName": "Duration Predictor",
+    "prosody_features_predictor": {
+      "shownName": "Prosody Features Predictor",
       "methods": {
-        "predictDuration": {
+        "predict": {
           "demonstratorUi": [
             "custom_element_registerer",
-            "DemonstratorDurationPredictorPredictDuration.js"
+            "DemonstratorProsodyFeaturesPredictorPredict.js"
           ]
         }
       }

@@ -13,14 +13,14 @@ import {
 } from "@notoflow/definitions";
 
 import {
-  DurationInputSupport,
   DurationPrediction,
-  DurationPredictorPredictDurationInput,
-  DurationPredictorPredictDurationOutput,
-  DurationPredictorPredictDurationSpecifier,
+  FeaturePredictionOverrideSupport,
   Language,
   PhonemeLexicon,
   ProsodyData,
+  ProsodyFeaturesPredictorPredictInput,
+  ProsodyFeaturesPredictorPredictOutput,
+  ProsodyFeaturesPredictorPredictSpecifier,
   ProsodyGeneratorGenerateProsodyInput,
   ProsodyGeneratorGenerateProsodyOutput,
   ProsodyGeneratorGenerateProsodySpecifier,
@@ -39,19 +39,19 @@ const Specification = z.object({
 });
 type Specification = z.infer<typeof Specification>;
 
-const JsonApiServerGetInfoResponseDurationPredictorContent = z.object({
+const JsonApiServerGetInfoResponseProsodyFeaturesPredictorContent = z.object({
   shownName: z.string(),
   specification: Specification,
   configurationSchema: z.tuple([z.literal("json_schema"), z.any()]),
   defaultConfiguration: z.any(),
 });
-type JsonApiServerGetInfoResponseDurationPredictorContent = z //
-.infer<typeof JsonApiServerGetInfoResponseDurationPredictorContent>;
+type JsonApiServerGetInfoResponseProsodyFeaturesPredictorContent = z //
+.infer<typeof JsonApiServerGetInfoResponseProsodyFeaturesPredictorContent>;
 
 const JsonApiServerGetInfoResponseProsodyGeneratorContent = z.object({
   shownName: z.string(),
   specification: Specification,
-  durationInput: DurationInputSupport,
+  durationInput: FeaturePredictionOverrideSupport,
   configurationSchema: z.tuple([z.literal("json_schema"), z.any()]),
   defaultConfiguration: z.any(),
 });
@@ -59,9 +59,9 @@ type JsonApiServerGetInfoResponseProsodyGeneratorContent = z //
 .infer<typeof JsonApiServerGetInfoResponseProsodyGeneratorContent>;
 
 const JsonApiServerGetInfoResponse = z.object({
-  durationPredictors: z.record(
+  prosodyFeaturesPredictors: z.record(
     z.string(),
-    JsonApiServerGetInfoResponseDurationPredictorContent,
+    JsonApiServerGetInfoResponseProsodyFeaturesPredictorContent,
   ),
   prosodyGenerators: z.record(
     z.string(),
@@ -95,10 +95,12 @@ export default definePluginHandlers({
 
     function handleAfterReady() { // TODO: handle error properly.
       const fns: Record<PluginInstanceFunctionalityKey, Functionality> = {};
-      for (const [name, content] of Object.entries(info.durationPredictors)) {
+      for (
+        const [name, content] of Object.entries(info.prosodyFeaturesPredictors)
+      ) {
         const key = PluginInstanceFunctionalityKey
-          .parse("duration_predictor.stock." + name);
-        fns[key] = makeFunctionalityDurationPredictor(name, content, {
+          .parse("prosody_features_predictor.stock." + name);
+        fns[key] = makeFunctionalityProsodyFeaturesPredictor(name, content, {
           entrypoint,
         });
       }
@@ -121,9 +123,9 @@ export default definePluginHandlers({
   },
 });
 
-function makeFunctionalityDurationPredictor(
+function makeFunctionalityProsodyFeaturesPredictor(
   _name: string,
-  content: JsonApiServerGetInfoResponseDurationPredictorContent,
+  content: JsonApiServerGetInfoResponseProsodyFeaturesPredictorContent,
   opts: {
     entrypoint: URL;
   },
@@ -132,7 +134,7 @@ function makeFunctionalityDurationPredictor(
     info: {
       dictionaryEntryFqn: makeFunctionalityDictionaryEntryFqn(
         PluginId.parse("notoko"),
-        FunctionalityDictionaryEntryKey.parse("duration_predictor"),
+        FunctionalityDictionaryEntryKey.parse("prosody_features_predictor"),
       ),
       shownName: content.shownName,
       specification: {
@@ -147,36 +149,38 @@ function makeFunctionalityDurationPredictor(
       },
     },
     methods: {
-      predictDuration: async (
+      predict: async (
         specifier_: unknown,
         input_: unknown,
       ): Promise<
         FunctionalityMethodInvocationResult<
-          DurationPredictorPredictDurationOutput
+          ProsodyFeaturesPredictorPredictOutput
         >
       > => {
-        const specifier = DurationPredictorPredictDurationSpecifier
+        const specifier = ProsodyFeaturesPredictorPredictSpecifier
           .parse(specifier_);
-        const input = DurationPredictorPredictDurationInput.parse(input_);
+        const input = ProsodyFeaturesPredictorPredictInput.parse(input_);
 
-        const reqBody = JSON.stringify({
-          specifier,
-          speed: input.speed,
-          segments: input.phonemeSegments,
-        });
-        const resp = await fetch(new URL("predict_duration", opts.entrypoint), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: reqBody,
-        });
+        const reqBody = JSON.stringify({ specifier, ...input });
+        const resp = await fetch(
+          new URL("predict_prosody_features", opts.entrypoint),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: reqBody,
+          },
+        );
         const data = await resp.json();
         return match(data)
           .returnType<
             FunctionalityMethodInvocationResult<
-              DurationPredictorPredictDurationOutput
+              ProsodyFeaturesPredictorPredictOutput
             >
           >()
-          .with(["ok", P.select()], (x) => ["ok", DurationPrediction.parse(x)])
+          .with(
+            ["ok", P.select()],
+            (x) => ["ok", ProsodyFeaturesPredictorPredictOutput.parse(x)],
+          )
           .with(
             ["error", P.select()],
             (
@@ -235,14 +239,7 @@ function makeFunctionalityProsodyGenerator(
           .parse(specifier_);
         const input = ProsodyGeneratorGenerateProsodyInput.parse(input_);
 
-        const reqBody = JSON.stringify({
-          specifier,
-          segments: input.phonemeSegments,
-          ...match(input.duration)
-            .with(["simple", P.select()], (x) => x)
-            .with(["custom", P.select()], (x) => x)
-            .exhaustive(),
-        });
+        const reqBody = JSON.stringify({ specifier, ...input });
         const resp = await fetch(new URL("generate_prosody", opts.entrypoint), {
           method: "POST",
           headers: { "Content-Type": "application/json" },

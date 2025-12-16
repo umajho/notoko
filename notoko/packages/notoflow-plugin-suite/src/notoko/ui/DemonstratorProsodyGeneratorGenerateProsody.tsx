@@ -1,4 +1,5 @@
 import { match } from "ts-pattern";
+import * as z from "zod/v4";
 
 import { type FunctionComponent, h } from "preact";
 import { useEffect, useRef } from "preact/hooks";
@@ -10,25 +11,28 @@ import type {
   FunctionalityMethodInvocationExResult,
 } from "@notoflow/definitions";
 
-import type {
-  Language,
-  PhonemeLexicon,
-  ProsodyGeneratorGenerateProsodyInput,
-  ProsodyGeneratorGenerateProsodyInputDuration,
-  ProsodyGeneratorGenerateProsodyOutput,
-  ProsodyGeneratorGenerateProsodySpecifier,
-  ProsodyGeneratorSpecification,
+import {
+  type DurationPrediction,
+  type EnergyPrediction,
+  type Language,
+  type PhonemeLexicon,
+  PhonemeSegment,
+  type PitchPrediction,
+  type ProsodyGeneratorGenerateProsodyInput,
+  type ProsodyGeneratorGenerateProsodyOutput,
+  type ProsodyGeneratorGenerateProsodySpecifier,
+  type ProsodyGeneratorSpecification,
 } from "../definitions";
 
 import {
   JsonTextarea,
   LanguageAndPhonemeLexiconSelector,
-  NumberInputThatCanBeFallbackToTextInput,
 } from "./shared/components-utils";
 import {
-  type ButtonTabEntry,
-  ButtonTabs,
-} from "./shared/components-rudimentary";
+  FieldsetFeaturePredictionDuration,
+  FieldsetFeaturePredictionEnergy,
+  FieldsetFeaturePredictionPitch,
+} from "./shared/components-fieldsets";
 
 export default function (tagName: string) {
   register(DemonstratorProsodyGeneratorGenerateProsody, tagName, [], {
@@ -57,43 +61,15 @@ const DemonstratorProsodyGeneratorGenerateProsody: FunctionComponent<{}> =
     const $selectedLanguage = useSignal<Language | null>(null);
     const $selectedPhonemeLexicon = useSignal<PhonemeLexicon | null>(null);
 
-    const $validSegsData = useSignal(null);
+    const $validSegsData = useSignal<PhonemeSegment[] | null>(null);
 
-    const $durationMode = useSignal<"simple" | "custom">("custom");
-    const $durationModeTabEntries = useComputed<ButtonTabEntry[]>(() => [
-      {
-        name: "Custom",
-        isActive: $durationMode.value === "custom",
-        isDisabled:
-          $outerProps.value?.specification.durationInputSupport === "forbidden",
-        onClick: () => $durationMode.value = "custom",
-      },
-      {
-        name: "Simple",
-        isActive: $durationMode.value === "simple",
-        isDisabled:
-          $outerProps.value?.specification.durationInputSupport === "required",
-        onClick: () => $durationMode.value = "simple",
-      },
-    ]);
-
-    const $speed = useSignal(1);
-    const $isSpeedValid = useComputed(() => $speed.value > 0);
-    const $validDurationData = useSignal(null);
-    const $validDuration = useComputed(() =>
-      match($durationMode.value)
-        .returnType<ProsodyGeneratorGenerateProsodyInputDuration | null>()
-        .with("simple", () =>
-          $isSpeedValid.value ? ["simple", { speed: $speed.value }] : null)
-        .with("custom", () =>
-          $validDurationData.value
-            ? ["custom", $validDurationData.value!]
-            : null)
-        .exhaustive()
-    );
+    const $durationPredictionData = useSignal<DurationPrediction | null>(null);
+    const $pitchPredictionData = useSignal<PitchPrediction | null>(null);
+    const $energyPredictionData = useSignal<EnergyPrediction | null>(null);
 
     const $areInputsValid = useComputed(() =>
-      !!$validSegsData.value && !!$validDuration.value
+      !!$validSegsData.value && !!$durationPredictionData.value &&
+      !!$pitchPredictionData.value && !!$energyPredictionData.value
     );
 
     const $result = useSignal<
@@ -116,7 +92,11 @@ const DemonstratorProsodyGeneratorGenerateProsody: FunctionComponent<{}> =
         },
         {
           phonemeSegments: $validSegsData.value!,
-          duration: $validDuration.value!,
+          featurePredictions: {
+            duration: $durationPredictionData.value!,
+            pitch: $pitchPredictionData.value!,
+            energy: $energyPredictionData.value!,
+          },
         },
       );
     }
@@ -134,10 +114,6 @@ const DemonstratorProsodyGeneratorGenerateProsody: FunctionComponent<{}> =
       };
       $selectedLanguage.value = $outerProps.value.specification
         .supportedLanguageAndPhonemeLexiconCombinations[0]?.language ?? null;
-      $durationMode.value =
-        $outerProps.value.specification.durationInputSupport === "forbidden"
-          ? "simple"
-          : "custom";
       $invocationJsonResultDisplayerTagName.value = $outerProps.value
         .context.getInvocationJsonResultDisplayerTagName();
     }, []);
@@ -178,46 +154,22 @@ const DemonstratorProsodyGeneratorGenerateProsody: FunctionComponent<{}> =
                     </span>
                   )}
               </legend>
-              <JsonTextarea placeholder="[…]" $validData={$validSegsData} />
+              <JsonTextarea
+                placeholder="[…]"
+                initialTextValue=""
+                onInputDataOrNullIfInvalid={(v) => $validSegsData.value = v}
+                dataSchemata={z.array(PhonemeSegment)}
+              />
             </fieldset>
-            <fieldset class="fieldset border-base-300 rounded-box w-full border p-4 gap-4">
-              <legend class="fieldset-legend">Duration</legend>
-              <ButtonTabs $tabs={$durationModeTabEntries} />
-              {match($durationMode.value)
-                .with("custom", () => (
-                  <fieldset class="fieldset">
-                    <legend class="fieldset-legend">
-                      Duration Prediction
-                      {(!$validDurationData.value) && (
-                        <span class="text-error text-xs italic">
-                          (*invalid)
-                        </span>
-                      )}
-                    </legend>
-                    <JsonTextarea
-                      placeholder='{ "durationTicks2d": …, "ticksPerSecond": … }'
-                      $validData={$validDurationData}
-                    />
-                  </fieldset>
-                )).with("simple", () => (
-                  <label class="floating-label">
-                    <span>
-                      Speed
-                      {(!$isSpeedValid.value) &&
-                        (
-                          <span class="text-error text-xs italic">
-                            (*invalid)
-                          </span>
-                        )}
-                    </span>
-                    <NumberInputThatCanBeFallbackToTextInput
-                      step={0.05}
-                      min={0}
-                      $value={$speed}
-                    />
-                  </label>
-                )).exhaustive()}
-            </fieldset>
+            <FieldsetFeaturePredictionDuration
+              $predictionData={$durationPredictionData}
+            />
+            <FieldsetFeaturePredictionPitch
+              $predictionData={$pitchPredictionData}
+            />
+            <FieldsetFeaturePredictionEnergy
+              $predictionData={$energyPredictionData}
+            />
           </fieldset>
         </form>
         {$result.value &&

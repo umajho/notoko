@@ -1,7 +1,7 @@
 From 0c974ff4e2be8663be228fc6f7b969c6dbdccdef Mon Sep 17 00:00:00 2001
 From: umajho <umajho@proton.me>
 Date: Tue, 9 Dec 2025 06:48:36 +0800
-Subject: [PATCH 6/6] coordinate the code with the refactoring on the notoko
+Subject: [PATCH 6/7] coordinate the code with the refactoring on the notoko
  codebase
 
 ---

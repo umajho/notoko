@@ -1,0 +1,1271 @@
+From 9c6d25668f74acf38e32a964d29b14a146f4dee6 Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Sat, 13 Dec 2025 22:28:44 +0800
+Subject: [PATCH 7/7] let copilot replace `predict_duration` with
+ `predict_prosody_features`
+
+---
+ api-server.py                          | 542 +++++++++++++++++--------
+ refactoring/__init__.py                |  10 +
+ refactoring/adapters.py                | 100 ++++-
+ refactoring/inference_service.py       | 159 ++++----
+ refactoring/instructions/{ => s1}/1.md |   0
+ refactoring/instructions/{ => s1}/2.md |   0
+ refactoring/instructions/{ => s1}/3.md |   0
+ refactoring/instructions/{ => s1}/4.md |   0
+ refactoring/instructions/s2/5.md       |  90 ++++
+ refactoring/instructions/s2/6.md       |   5 +
+ refactoring/instructions/s2/7.md       |  11 +
+ refactoring/instructions/s2/8.md       |  17 +
+ refactoring/instructions/s2/9.md       |  10 +
+ refactoring/types.py                   |  34 +-
+ 14 files changed, 720 insertions(+), 258 deletions(-)
+ rename refactoring/instructions/{ => s1}/1.md (100%)
+ rename refactoring/instructions/{ => s1}/2.md (100%)
+ rename refactoring/instructions/{ => s1}/3.md (100%)
+ rename refactoring/instructions/{ => s1}/4.md (100%)
+ create mode 100644 refactoring/instructions/s2/5.md
+ create mode 100644 refactoring/instructions/s2/6.md
+ create mode 100644 refactoring/instructions/s2/7.md
+ create mode 100644 refactoring/instructions/s2/8.md
+ create mode 100644 refactoring/instructions/s2/9.md
+
+diff --git a/api-server.py b/api-server.py
+index 514af18..3854d11 100644
+--- a/api-server.py
++++ b/api-server.py
+@@ -6,8 +6,18 @@ import numpy as np
+ import json
+ import os
+ 
+-from refactoring import InferenceService, LanguageSpecifier, PhonemizeResult, PhonemeSegment, DurationResult
+-from utils.tools import generate_prosody_json
++from refactoring import (
++    InferenceService, 
++    LanguageSpecifier, 
++    PhonemizeResult, 
++    PhonemeSegment, 
++    DurationResult,
++    PitchResult,
++    EnergyResult,
++    DurationOptions,
++    PitchOptions,
++    EnergyOptions
++)
+ 
+ app = Flask(__name__)
+ 
+@@ -67,69 +77,307 @@ def validate_duration_ticks_shape(segments: list[dict[str, Any]], duration_ticks
+     return True, None
+ 
+ 
+-@app.route("/predict_duration", methods=["POST"])
+-def predict_duration():
+-    """Predict duration for phoneme segments."""
++def validate_pitch_shape(segments: list[dict[str, Any]], pitch_2d: list[list[float]]) -> tuple[bool, str | None]:
++    """
++    Validate that pitchHz2d shape matches segments structure.
++    
++    Returns:
++        (is_valid, error_message)
++    """
++    if len(segments) != len(pitch_2d):
++        return False, f"pitchHz2d length ({len(pitch_2d)}) does not match segments length ({len(segments)})"
++    
++    for i, (segment, pitches) in enumerate(zip(segments, pitch_2d)):
++        phonemes = segment.get("phonemes", [])
++        if len(phonemes) != len(pitches):
++            return False, f"pitchHz2d[{i}] length ({len(pitches)}) does not match segments[{i}].phonemes length ({len(phonemes)})"
++    
++    return True, None
++
++
++def validate_energy_shape(segments: list[dict[str, Any]], energy_2d: list[list[float]]) -> tuple[bool, str | None]:
++    """
++    Validate that energyZScore2d shape matches segments structure.
++    
++    Returns:
++        (is_valid, error_message)
++    """
++    if len(segments) != len(energy_2d):
++        return False, f"energyZScore2d length ({len(energy_2d)}) does not match segments length ({len(segments)})"
++    
++    for i, (segment, energies) in enumerate(zip(segments, energy_2d)):
++        phonemes = segment.get("phonemes", [])
++        if len(phonemes) != len(energies):
++            return False, f"energyZScore2d[{i}] length ({len(energies)}) does not match segments[{i}].phonemes length ({len(phonemes)})"
++    
++    return True, None
++
++
++def parse_prosody_request(
++    data: dict[str, Any], 
++    override_key: str = "featurePredictions",
++    require_features: bool = False
++) -> tuple[
++    LanguageSpecifier | None,
++    PhonemizeResult | None,
++    list[dict[str, Any]] | None,
++    DurationResult | DurationOptions | None,
++    PitchResult | PitchOptions | None,
++    EnergyResult | EnergyOptions | None,
++    tuple[str, int] | None  # error tuple (message, status_code)
++]:
++    """
++    Parse common prosody request format for both endpoints.
++    
++    Args:
++        data: Request data
++        override_key: Key to look for feature overrides ("featurePredictionOverrides" or "featurePredictions")
++        require_features: If True, all features in the override object are required
++    
++    Returns:
++        (lang_spec, phonemize_result, segments, duration_input, pitch_input, energy_input, error)
++        If error is not None, other values may be None.
++    """
++    # Validate request structure
++    if not data or "specifier" not in data or "phonemeSegments" not in data:
++        return None, None, None, None, None, None, ("missing required fields: specifier, phonemeSegments", 400)
++    
++    # Parse specifier
++    specifier = data["specifier"]
++    lang_iso639_3 = specifier.get("language")
++    phoneme_lexicon = specifier.get("phonemeLexicon")
++    
++    if not lang_iso639_3 or not phoneme_lexicon:
++        return None, None, None, None, None, None, ("specifier must have language and phonemeLexicon", 400)
++    
++    # Validate language and phoneme lexicon
++    is_valid, error_msg = validate_language_and_phoneme_lexicon(lang_iso639_3, phoneme_lexicon)
++    if not is_valid:
++        return None, None, None, None, None, None, (error_msg, 400)
++    
++    # Parse segments
++    segments = data["phonemeSegments"]
++    if not isinstance(segments, list):
++        return None, None, None, None, None, None, ("phonemeSegments must be a list", 400)
++    
++    # Convert to PhonemizeResult
++    phoneme_segments = []
++    for seg in segments:
++        if "text" not in seg or "phonemes" not in seg:
++            return None, None, None, None, None, None, ("each segment must have text and phonemes", 400)
++        phoneme_segments.append(PhonemeSegment(text=seg["text"], phonemes=seg["phonemes"]))
++    
++    phonemize_result = PhonemizeResult(segments=phoneme_segments)
++    
++    # Create LanguageSpecifier
++    lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=phoneme_lexicon)
++    
++    # Parse controls (for predict_prosody_features)
++    controls = data.get("controls")
++    speed_control = None
++    pitch_control = None
++    energy_control = None
++    
++    if controls is not None:
++        speed_control = controls.get("speed")
++        pitch_control = controls.get("pitch")
++        energy_control = controls.get("energy")
++    
++    # Parse feature overrides/predictions
++    overrides = data.get(override_key)
++    
++    # Check if features are required
++    if require_features:
++        if overrides is None:
++            return None, None, None, None, None, None, (f"{override_key} is required", 400)
++    
++    duration_input = None
++    pitch_input = None
++    energy_input = None
++    
++    if overrides is not None:
++        # Check if features are required
++        if require_features:
++            if "duration" not in overrides or "pitch" not in overrides or "energy" not in overrides:
++                return None, None, None, None, None, None, (f"all features (duration, pitch, energy) are required in {override_key}", 400)
++        
++        # Parse duration parameter
++        duration_param = overrides.get("duration")
++        if duration_param is not None:
++            # Check mutual exclusivity with controls.speed
++            if speed_control is not None:
++                return None, None, None, None, None, None, ("duration in featurePredictionOverrides and speed in controls are mutually exclusive", 400)
++            
++            if "durationTicks2d" in duration_param and "ticksPerSecond" in duration_param:
++                # DurationResult
++                duration_ticks_2d = duration_param["durationTicks2d"]
++                ticks_per_second = duration_param["ticksPerSecond"]
++                
++                # Validate durations shape
++                is_valid, error_msg = validate_duration_ticks_shape(segments, duration_ticks_2d)
++                if not is_valid:
++                    return None, None, None, None, None, None, (error_msg, 400)
++                
++                # Get config for hop_length
++                lang_code = lang_iso639_3
++                preprocess_config, _, _ = inference_service.configs[lang_code]
++                hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++                
++                # Convert durationTicks2d back to durations2d by dividing by hop_length
++                durations_2d = [
++                    [duration_ticks // hop_length for duration_ticks in segment_durations]
++                    for segment_durations in duration_ticks_2d
++                ]
++                
++                duration_input = DurationResult(
++                    ticks_per_second=ticks_per_second,
++                    durations_2d=durations_2d,
++                    duration_unit_in_ticks=hop_length
++                )
++            else:
++                return None, None, None, None, None, None, ("duration must have durationTicks2d and ticksPerSecond", 400)
++    
++        # Parse pitch parameter
++        pitch_param = overrides.get("pitch")
++        if pitch_param is not None:
++            # Check mutual exclusivity with controls.pitch
++            if pitch_control is not None:
++                return None, None, None, None, None, None, ("pitch in featurePredictionOverrides and pitch in controls are mutually exclusive", 400)
++            
++            if "pitchHz2d" in pitch_param:
++                # PitchResult with frequency in Hz - need to normalize to z-score
++                pitch_2d = pitch_param["pitchHz2d"]
++                
++                # Validate pitch shape
++                is_valid, error_msg = validate_pitch_shape(segments, pitch_2d)
++                if not is_valid:
++                    return None, None, None, None, None, None, (error_msg, 400)
++                
++                # Get stats for normalization
++                lang_code = lang_iso639_3
++                preprocess_config, _, _ = inference_service.configs[lang_code]
++                
++                # Load pitch stats
++                import json
++                stats_path = preprocess_config["path"]["preprocessed_path"] + "/stats.json"
++                with open(stats_path) as f:
++                    stats = json.load(f)
++                    pitch_mean = stats["pitch"][2]
++                    pitch_std = stats["pitch"][3]
++                
++                # Normalize frequency to z-score: (freq - mean) / std
++                pitch_2d = [
++                    [(freq - pitch_mean) / pitch_std for freq in segment_freqs]
++                    for segment_freqs in pitch_2d
++                ]
++                
++                pitch_input = PitchResult(pitch_2d=pitch_2d)
++            else:
++                return None, None, None, None, None, None, ("pitch must have pitchHz2d", 400)
++    
++        # Parse energy parameter
++        energy_param = overrides.get("energy")
++        if energy_param is not None:
++            # Check mutual exclusivity with controls.energy
++            if energy_control is not None:
++                return None, None, None, None, None, None, ("energy in featurePredictionOverrides and energy in controls are mutually exclusive", 400)
++            
++            if "energyZScore2d" in energy_param:
++                # EnergyResult
++                energy_2d = energy_param["energyZScore2d"]
++                
++                # Validate energy shape
++                is_valid, error_msg = validate_energy_shape(segments, energy_2d)
++                if not is_valid:
++                    return None, None, None, None, None, None, (error_msg, 400)
++                
++                energy_input = EnergyResult(energy_2d=energy_2d)
++            else:
++                return None, None, None, None, None, None, ("energy must have energyZScore2d", 400)
++    
++    # Apply controls if no overrides were provided
++    if speed_control is not None and duration_input is None:
++        duration_input = DurationOptions(speed=speed_control)
++    
++    if pitch_control is not None and pitch_input is None:
++        pitch_input = PitchOptions(pitch_control=pitch_control)
++    
++    if energy_control is not None and energy_input is None:
++        energy_input = EnergyOptions(energy_control=energy_control)
++    
++    return lang_spec, phonemize_result, segments, duration_input, pitch_input, energy_input, None
++
++
++@app.route("/predict_prosody_features", methods=["POST"])
++def predict_prosody_features():
++    """Predict prosody features (duration, pitch, energy) for phoneme segments."""
+     try:
+         data = request.get_json()
+         
+-        # Validate request structure
+-        if not data or "specifier" not in data or "segments" not in data:
+-            return jsonify(["error", {"message": "missing required fields: specifier, segments"}]), 400
+-        
+-        # Parse specifier
+-        specifier = data["specifier"]
+-        lang_iso639_3 = specifier.get("language")
+-        phoneme_lexicon = specifier.get("phonemeLexicon") 
+-        
+-        if not lang_iso639_3 or not phoneme_lexicon:
+-            return jsonify(["error", {"message": "specifier must have language and phonemeLexicon"}]), 400
+-        
+-        # Validate language and phoneme lexicon
+-        is_valid, error_msg = validate_language_and_phoneme_lexicon(lang_iso639_3, phoneme_lexicon)
+-        if not is_valid:
+-            return jsonify(["error", {"message": error_msg}]), 400
+-        
+-        # Parse segments
+-        segments = data["segments"]
+-        if not isinstance(segments, list):
+-            return jsonify(["error", {"message": "segments must be a list"}]), 400
+-        
+-        # Convert to PhonemizeResult
+-        phoneme_segments = []
+-        for seg in segments:
+-            if "text" not in seg or "phonemes" not in seg:
+-                return jsonify(["error", {"message": "each segment must have text and phonemes"}]), 400
+-            phoneme_segments.append(PhonemeSegment(text=seg["text"], phonemes=seg["phonemes"]))
+-        
+-        phonemize_result = PhonemizeResult(segments=phoneme_segments)
+-        
+-        # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=phoneme_lexicon)
+-        
+-        # Parse optional speed parameter and calculate duration_control
+-        speed = data.get("speed")
+-        duration_control = 1.0 / speed if speed is not None else 1.0
++        # Parse request using shared logic with featurePredictionOverrides
++        lang_spec, phonemize_result, segments, duration_input, pitch_input, energy_input, error = parse_prosody_request(
++            data, override_key="featurePredictionOverrides"
++        )
++        if error:
++            error_msg, status_code = error
++            return jsonify(["error", {"message": error_msg}]), status_code
+         
+         # Call inference service
+-        duration_result = inference_service.predict_duration(
+-            lang_spec, phonemize_result, duration_control=duration_control
++        predict_result = inference_service.predict_prosody_features(
++            lang_spec, phonemize_result, duration_input, pitch_input, energy_input
+         )
+         
+-        # Format response - multiply durations by duration_unit_in_ticks
+-        duration_ticks_2d = [
+-            [duration * duration_result.duration_unit_in_ticks for duration in segment_durations]
+-            for segment_durations in duration_result.durations_2d
+-        ]
++        # Load pitch stats for denormalization
++        lang_code = lang_spec.iso639_3
++        preprocess_config, _, _ = inference_service.configs[lang_code]
++        import json
++        stats_path = preprocess_config["path"]["preprocessed_path"] + "/stats.json"
++        with open(stats_path) as f:
++            stats = json.load(f)
++            pitch_mean = stats["pitch"][2]
++            pitch_std = stats["pitch"][3]
++        
++        # Build response with grouped features
++        response = {}
++        
++        # Duration feature
++        if isinstance(duration_input, DurationResult):
++            response["duration"] = {"isOverridden": True}
++        else:
++            duration_ticks_2d = [
++                [duration * predict_result.duration_result.duration_unit_in_ticks for duration in segment_durations]
++                for segment_durations in predict_result.duration_result.durations_2d
++            ]
++            response["duration"] = {
++                "ticksPerSecond": predict_result.duration_result.ticks_per_second,
++                "durationTicks2d": duration_ticks_2d
++            }
+         
+-        response = {
+-            "ticksPerSecond": duration_result.ticks_per_second,
+-            "durationTicks2d": duration_ticks_2d
+-        }
++        # Pitch feature
++        if isinstance(pitch_input, PitchResult):
++            response["pitch"] = {"isOverridden": True}
++        else:
++            pitch_2d = [
++                [normalized * pitch_std + pitch_mean for normalized in segment_pitches]
++                for segment_pitches in predict_result.pitch_2d
++            ]
++            response["pitch"] = {
++                "pitchHz2d": pitch_2d
++            }
++        
++        # Energy feature
++        if isinstance(energy_input, EnergyResult):
++            response["energy"] = {"isOverridden": True}
++        else:
++            response["energy"] = {
++                "energyZScore2d": predict_result.energy_2d
++            }
+         
+         return jsonify(["ok", response]), 200
+         
+     except Exception as e:
++        import traceback
++        traceback.print_exc()
+         return jsonify(["error", {"message": f"internal error: {str(e)}"}]), 500
+ 
+ 
+@@ -139,131 +387,95 @@ def generate_prosody():
+     try:
+         data = request.get_json()
+         
+-        # Validate request structure
+-        if not data or "specifier" not in data or "segments" not in data:
+-            return jsonify(["error", {"message": "missing required fields: specifier, segments"}]), 400
+-        
+-        # Parse specifier
+-        specifier = data["specifier"]
+-        lang_iso639_3 = specifier.get("language")
+-        phoneme_lexicon = specifier.get("phonemeLexicon")
+-        
+-        if not lang_iso639_3 or not phoneme_lexicon:
+-            return jsonify(["error", {"message": "specifier must have language and phonemeLexicon"}]), 400
+-        
+-        # Validate language and phoneme lexicon
+-        is_valid, error_msg = validate_language_and_phoneme_lexicon(lang_iso639_3, phoneme_lexicon)
+-        if not is_valid:
+-            return jsonify(["error", {"message": error_msg}]), 400
+-        
+-        # Parse segments
+-        segments = data["segments"]
+-        if not isinstance(segments, list):
+-            return jsonify(["error", {"message": "segments must be a list"}]), 400
+-        
+-        # Convert to PhonemizeResult
+-        phoneme_segments = []
+-        for seg in segments:
+-            if "text" not in seg or "phonemes" not in seg:
+-                return jsonify(["error", {"message": "each segment must have text and phonemes"}]), 400
+-            phoneme_segments.append(PhonemeSegment(text=seg["text"], phonemes=seg["phonemes"]))
+-        
+-        phonemize_result = PhonemizeResult(segments=phoneme_segments)
+-        
+-        # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=phoneme_lexicon)
++        # Parse request using shared logic with featurePredictions (all features required)
++        lang_spec, phonemize_result, segments, duration_input, pitch_input, energy_input, error = parse_prosody_request(
++            data, override_key="featurePredictions", require_features=True
++        )
++        if error:
++            error_msg, status_code = error
++            return jsonify(["error", {"message": error_msg}]), status_code
+         
+-        # Parse optional speed parameter and calculate duration_control
+-        speed = data.get("speed")
+-        duration_control = 1.0 / speed if speed is not None else 1.0
++        # Predict prosody features
++        predict_result = inference_service.predict_prosody_features(
++            lang_spec, phonemize_result, duration_input, pitch_input, energy_input
++        )
+         
+-        # Get or predict durations
+-        duration_ticks_2d = data.get("durationTicks2d")
+-        ticks_per_second = data.get("ticksPerSecond")
++        # Load pitch stats for denormalization
++        lang_code = lang_spec.iso639_3
++        preprocess_config, _, _ = inference_service.configs[lang_code]
++        import json
++        stats_path = preprocess_config["path"]["preprocessed_path"] + "/stats.json"
++        with open(stats_path) as f:
++            stats = json.load(f)
++            pitch_mean = stats["pitch"][2]
++            pitch_std = stats["pitch"][3]
+         
+-        # Validate that both durationTicks2d and speed are not provided together
+-        if duration_ticks_2d is not None and speed is not None:
+-            return jsonify(["error", {"message": "cannot provide both durationTicks2d and speed parameters"}]), 400
++        # Infer audio to get actual pitch
++        infer_result = inference_service.infer_audio(lang_spec, predict_result)
+         
+-        if duration_ticks_2d is not None:
+-            # Validate that ticksPerSecond is provided
+-            if ticks_per_second is None:
+-                return jsonify(["error", {"message": "ticksPerSecond is required when durationTicks2d is provided"}]), 400
++        # Build segments with predicted prosody features
++        prosody_segments = []
++        for seg_idx, segment in enumerate(phonemize_result.segments):
++            segment_phonemes = []
+             
+-            # Validate durations shape
+-            is_valid, error_msg = validate_duration_ticks_shape(segments, duration_ticks_2d)
+-            if not is_valid:
+-                return jsonify(["error", {"message": error_msg}]), 400
++            duration_ticks = predict_result.duration_result.durations_2d[seg_idx]
+             
+-            # Get config for hop_length
+-            lang_code = lang_iso639_3
+-            preprocess_config, _, _ = inference_service.configs[lang_code]
+-            hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++            for phon_idx, phoneme in enumerate(segment.phonemes):
++                phoneme_entry = {
++                    "rawText": phoneme,
++                    "durationTicks": duration_ticks[phon_idx] * predict_result.duration_result.duration_unit_in_ticks if phon_idx < len(duration_ticks) else 0,
++                }
++                
++                segment_phonemes.append(phoneme_entry)
+             
+-            # Convert durationTicks2d back to durations2d by dividing by hop_length
+-            durations_2d = [
+-                [duration_ticks // hop_length for duration_ticks in segment_durations]
+-                for segment_durations in duration_ticks_2d
+-            ]
+-            
+-            # Create DurationResult from provided durations
+-            duration_result = DurationResult(
+-                ticks_per_second=ticks_per_second,
+-                durations_2d=durations_2d,
+-                duration_unit_in_ticks=hop_length
+-            )
+-        else:
+-            # Predict durations using inference service
+-            duration_result = inference_service.predict_duration(
+-                lang_spec, phonemize_result, duration_control=duration_control
+-            )
+-        
+-        # Predict pitch and energy
+-        predict_result = inference_service.predict_pitch_and_energy(
+-            lang_spec, phonemize_result, duration_result
+-        )
+-        
+-        # Infer audio to get actual pitch
+-        infer_result = inference_service.infer_audio(lang_spec, predict_result)
+-        
+-        # Prepare data for generate_prosody_json
+-        # Flatten all phonemes
+-        all_phonemes = []
+-        for segment in phonemize_result.segments:
+-            all_phonemes.extend(segment.phonemes)
+-        
+-        # Flatten durations
+-        all_durations = []
+-        for seg_durations in duration_result.durations_2d:
+-            all_durations.extend(seg_durations)
+-        all_durations = np.array(all_durations)
+-        
+-        # Convert segments to format expected by generate_prosody_json
+-        segments_data = []
+-        for segment in phonemize_result.segments:
+-            segments_data.append({
++            prosody_segments.append({
+                 "text": segment.text,
+-                "phonemes": segment.phonemes
++                "phonemes": segment_phonemes
+             })
+         
+         # Reconstruct raw text from segments
+         raw_text = "".join(seg.text for seg in phonemize_result.segments)
+         
+         # Determine language name
++        lang_iso639_3 = lang_spec.iso639_3
+         language_name = "mandarin" if lang_iso639_3 == "cmn" else "english"
+         
+-        # Generate prosody JSON
+-        prosody_data = generate_prosody_json(
+-            raw_text=raw_text,
+-            phonemes=all_phonemes,
+-            durations=all_durations,
+-            actual_pitch=infer_result.actual_pitch,
+-            hop_length=infer_result.hop_length,
+-            sampling_rate=infer_result.sampling_rate,
+-            segments_data=segments_data,
+-            ticks_per_point=1,
+-            language=language_name,
+-        )
++        # Calculate total duration in ticks for actual pitch
++        calculated_total = sum(sum(phoneme["durationTicks"] for phoneme in seg["phonemes"]) for seg in prosody_segments)
++        
++        # Resample actual_pitch to match calculated_total if needed
++        actual_pitch = infer_result.actual_pitch
++        if len(actual_pitch) != calculated_total:
++            from scipy.interpolate import interp1d
++            if len(actual_pitch) > 1:
++                old_x = np.linspace(0, calculated_total - 1, len(actual_pitch))
++                new_x = np.arange(calculated_total)
++                interp_func = interp1d(old_x, actual_pitch, kind='linear', 
++                                      bounds_error=False, 
++                                      fill_value=(actual_pitch[0], actual_pitch[-1]))
++                actual_pitch = interp_func(new_x)
++            else:
++                actual_pitch = np.full(calculated_total, actual_pitch[0] if len(actual_pitch) > 0 else 0)
++        
++        # Convert pitch points to pointsPackedV1 format
++        pitch_floats = [float(p) for p in actual_pitch]
++        import struct
++        import base64
++        packed_bytes = b''.join(struct.pack('<f', p) for p in pitch_floats)
++        points_packed_v1 = base64.b64encode(packed_bytes).decode('ascii')
++        
++        # Build prosody data structure
++        prosody_data = {
++            "$schema": "https://raw.githubusercontent.com/umajho/notoko/main/schemata/notoko-prosody-data.v1.json",
++            "defaultLanguage": language_name,
++            "inputText": raw_text,
++            "ticksPerSecond": infer_result.sampling_rate,
++            "segments": prosody_segments,
++            "actualPitches": {
++                "ticksPerPoint": 1,
++                "pointsPackedV1": points_packed_v1
++            }
++        }
+         
+         return jsonify(["ok", prosody_data]), 200
+         
+@@ -279,7 +491,7 @@ def get_info():
+     try:
+         info = {
+             "shownName": "FastSpeech2 Patched Prototype",
+-            "durationPredictors": {},
++            "prosodyFeaturesPredictors": {},
+             "prosodyGenerators": {}
+         }
+         
+@@ -318,7 +530,7 @@ def get_info():
+             }]
+ 
+             # Build duration predictor info
+-            duration_predictor = {
++            prosody_features_predictor = {
+                 "shownName": config["shown_name"],
+                 "specification": {
+                     "supportedLanguageAndPhonemeLexiconCombinations": supported_input_languages
+@@ -326,7 +538,7 @@ def get_info():
+                 "configurationSchema": config_schema,
+                 "defaultConfiguration": default_config
+             }
+-            info["durationPredictors"][key] = duration_predictor
++            info["prosodyFeaturesPredictors"][key] = prosody_features_predictor
+             
+             # Build prosody generator info
+             prosody_generator = {
+diff --git a/refactoring/__init__.py b/refactoring/__init__.py
+index 7709b7d..2c28298 100644
+--- a/refactoring/__init__.py
++++ b/refactoring/__init__.py
+@@ -5,6 +5,11 @@ from .types import (
+     PhonemeSegment,
+     PhonemizeResult,
+     DurationResult,
++    DurationOptions,
++    PitchOptions,
++    PitchResult,
++    EnergyOptions,
++    EnergyResult,
+     PredictResult,
+     InferResult,
+ )
+@@ -15,6 +20,11 @@ __all__ = [
+     "PhonemeSegment",
+     "PhonemizeResult",
+     "DurationResult",
++    "DurationOptions",
++    "PitchOptions",
++    "PitchResult",
++    "EnergyOptions",
++    "EnergyResult",
+     "PredictResult",
+     "InferResult",
+     "InferenceService",
+diff --git a/refactoring/adapters.py b/refactoring/adapters.py
+index f25078f..ebab303 100644
+--- a/refactoring/adapters.py
++++ b/refactoring/adapters.py
+@@ -13,6 +13,11 @@ from .types import (
+     PhonemeSegment,
+     PhonemizeResult,
+     DurationResult,
++    DurationOptions,
++    PitchOptions,
++    PitchResult,
++    EnergyOptions,
++    EnergyResult,
+     PredictResult,
+     InferResult,
+ )
+@@ -109,13 +114,57 @@ def duration_result_to_tensor(duration_result: DurationResult) -> torch.Tensor:
+     return duration_tensor
+ 
+ 
+-def extract_duration_from_output(
++def pitch_result_to_tensor(pitch_result: PitchResult) -> torch.Tensor:
++    """Convert PitchResult to tensor format expected by model.
++    
++    Args:
++        pitch_result: PitchResult with pitch_2d structure (normalized z-scores)
++        
++    Returns:
++        Tensor of shape [1, total_phonemes] containing pitch values
++    """
++    # Flatten the 2D pitch structure into 1D array
++    pitch_flat = []
++    for segment_pitches in pitch_result.pitch_2d:
++        pitch_flat.extend(segment_pitches)
++    
++    # Convert to tensor [1, num_phonemes]
++    pitch_tensor = torch.FloatTensor([pitch_flat]).to(device)
++    
++    return pitch_tensor
++
++
++def energy_result_to_tensor(energy_result: EnergyResult) -> torch.Tensor:
++    """Convert EnergyResult to tensor format expected by model.
++    
++    Args:
++        energy_result: EnergyResult with energy_2d structure
++        
++    Returns:
++        Tensor of shape [1, total_phonemes] containing energy values
++    """
++    # Flatten the 2D energy structure into 1D array
++    energy_flat = []
++    for segment_energies in energy_result.energy_2d:
++        energy_flat.extend(segment_energies)
++    
++    # Convert to tensor [1, num_phonemes]
++    energy_tensor = torch.FloatTensor([energy_flat]).to(device)
++    
++    return energy_tensor
++
++
++def create_predict_result(
+     output: tuple[Any, ...],
+     phonemize_result: PhonemizeResult,
+-    sampling_rate: int,
+-    hop_length: int
+-) -> DurationResult:
+-    """Extract duration information from model output."""
++    preprocess_config: dict[str, Any]
++) -> PredictResult:
++    """Create PredictResult from model output."""
++    mel_predictions = output[1][0].detach().cpu().numpy()
++    mel_len = output[9][0].item()
++    src_len = output[8][0].item()
++    
++    # Extract duration information from model output
+     # output[5] is d_rounded (duration predictions)
+     duration_predictions = output[5][0].detach().cpu().numpy()
+     
+@@ -130,23 +179,14 @@ def extract_duration_from_output(
+                 phoneme_idx += 1
+         durations_2d.append(segment_durations)
+     
+-    return DurationResult(
++    sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
++    hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
++    
++    duration_result = DurationResult(
+         ticks_per_second=sampling_rate,
+         durations_2d=durations_2d,
+         duration_unit_in_ticks=hop_length
+     )
+-
+-
+-def create_predict_result(
+-    output: tuple[Any, ...],
+-    phonemize_result: PhonemizeResult,
+-    duration_result: DurationResult,
+-    preprocess_config: dict[str, Any]
+-) -> PredictResult:
+-    """Create PredictResult from model output."""
+-    mel_predictions = output[1][0].detach().cpu().numpy()
+-    mel_len = output[9][0].item()
+-    src_len = output[8][0].item()
+     
+     pitch_feature = preprocess_config["preprocessing"]["pitch"]["feature"]
+     energy_feature = preprocess_config["preprocessing"]["energy"]["feature"]
+@@ -155,9 +195,33 @@ def create_predict_result(
+     pitch_predictions = output[2][0].detach().cpu().numpy()
+     energy_predictions = output[3][0].detach().cpu().numpy()
+     
++    # Convert pitch and energy predictions to 2D structure
++    # If phoneme-level, match to segments->phonemes
++    # If frame-level, we'll create a simple structure for now
++    if pitch_feature == "phoneme_level":
++        pitch_2d = []
++        energy_2d = []
++        phoneme_idx = 0
++        for segment in phonemize_result.segments:
++            segment_pitches = []
++            segment_energies = []
++            for _ in segment.phonemes:
++                if phoneme_idx < len(pitch_predictions):
++                    segment_pitches.append(float(pitch_predictions[phoneme_idx]))
++                    segment_energies.append(float(energy_predictions[phoneme_idx]))
++                    phoneme_idx += 1
++            pitch_2d.append(segment_pitches)
++            energy_2d.append(segment_energies)
++    else:
++        # Frame-level: for now, create one segment with all frames
++        pitch_2d = [[float(p) for p in pitch_predictions]]
++        energy_2d = [[float(e) for e in energy_predictions]]
++    
+     return PredictResult(
+         phonemize_result=phonemize_result,
+         duration_result=duration_result,
++        pitch_2d=pitch_2d,
++        energy_2d=energy_2d,
+         pitch_predictions=pitch_predictions,
+         energy_predictions=energy_predictions,
+         mel_predictions=mel_predictions,
+diff --git a/refactoring/inference_service.py b/refactoring/inference_service.py
+index 538db50..0dd7ea8 100644
+--- a/refactoring/inference_service.py
++++ b/refactoring/inference_service.py
+@@ -7,6 +7,11 @@ from .types import (
+     LanguageSpecifier,
+     PhonemizeResult,
+     DurationResult,
++    DurationOptions,
++    PitchOptions,
++    PitchResult,
++    EnergyOptions,
++    EnergyResult,
+     PredictResult,
+     InferResult,
+ )
+@@ -15,9 +20,11 @@ from .adapters import (
+     phonemize_with_existing_code,
+     get_phoneme_sequence,
+     prepare_model_input,
+-    extract_duration_from_output,
+     create_predict_result,
+     create_infer_result,
++    duration_result_to_tensor,
++    pitch_result_to_tensor,
++    energy_result_to_tensor,
+ )
+ from utils.model import get_model, get_vocoder
+ 
+@@ -90,79 +97,74 @@ class InferenceService:
+         
+         return phonemize_with_existing_code(lang, text, preprocess_config)
+     
+-    def predict_duration(
+-        self, 
+-        lang: LanguageSpecifier, 
+-        phonemize_result: PhonemizeResult, 
+-        **opts: Any
+-    ) -> DurationResult:
+-        """
+-        Predict duration for each phoneme.
+-        
+-        Args:
+-            lang: Language specifier
+-            phonemize_result: Result from phonemize()
+-            **opts: Optional control parameters
+-                - duration_control: float, control speaking speed (default 1.0)
+-                
+-        Returns:
+-            DurationResult with ticks_per_second and durations_2d
+-        """
+-        lang_code = self._get_lang_code(lang)
+-        preprocess_config, model_config, train_config = self.configs[lang_code]
+-        model = self.models[lang_code]
+-        speaker_id = self._get_speaker_id(lang)
+-        
+-        duration_control = opts.get("duration_control", 1.0)
+-        
+-        # Get phoneme sequence
+-        phoneme_sequence = get_phoneme_sequence(phonemize_result, preprocess_config)
+-        
+-        # Prepare model input
+-        speakers, texts, src_lens, max_src_len = prepare_model_input(
+-            speaker_id, phoneme_sequence, preprocess_config
+-        )
+-        
+-        # Run model forward pass with duration control
+-        with torch.no_grad():
+-            output = model(
+-                speakers, texts, src_lens, max_src_len,
+-                d_control=duration_control
+-            )
+-        
+-        # Extract duration from output
+-        sampling_rate = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+-        hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
+-        return extract_duration_from_output(output, phonemize_result, sampling_rate, hop_length)
+-    
+-    def predict_pitch_and_energy(
++    def predict_prosody_features(
+         self,
+         lang: LanguageSpecifier,
+         phonemize_result: PhonemizeResult,
+-        duration_result: DurationResult,
+-        **opts: Any
++        duration: DurationResult | DurationOptions | None,
++        pitch: PitchResult | PitchOptions | None,
++        energy: EnergyResult | EnergyOptions | None,
++        **opts: Any,
+     ) -> PredictResult:
+         """
+-        Predict pitch and energy using the given duration.
++        Predict prosody features (duration, pitch, energy) for phonemes.
+         
+         Args:
+             lang: Language specifier
+             phonemize_result: Result from phonemize()
+-            duration_result: Result from predict_duration() - will be used to guide predictions
+-            **opts: Optional control parameters
+-                - pitch_control: float, control pitch (default 1.0)
+-                - energy_control: float, control energy (default 1.0)
++            duration: Either a DurationResult (to use existing), DurationOptions (to control prediction), or None (use defaults)
++            pitch: Either a PitchResult (to use existing), PitchOptions (to control prediction), or None (use defaults)
++            energy: Either an EnergyResult (to use existing), EnergyOptions (to control prediction), or None (use defaults)
++            **opts: Additional options
+                 
+         Returns:
+-            PredictResult with all prediction data
++            PredictResult with all prosody features
+         """
+         lang_code = self._get_lang_code(lang)
+         preprocess_config, model_config, train_config = self.configs[lang_code]
+         model = self.models[lang_code]
+         speaker_id = self._get_speaker_id(lang)
+         
+-        pitch_control = opts.get("pitch_control", 1.0)
+-        energy_control = opts.get("energy_control", 1.0)
++        # Process duration parameter
++        if isinstance(duration, DurationResult):
++            # Use provided duration
++            duration_result = duration
++            d_targets = duration_result_to_tensor(duration_result)
++            duration_control = 1.0
++        elif isinstance(duration, DurationOptions):
++            # Use duration options
++            d_targets = None
++            duration_control = 1.0 / duration.speed
++            duration_result = None
++        else:
++            # Use defaults
++            d_targets = None
++            duration_control = 1.0
++            duration_result = None
++        
++        # Process pitch parameter
++        if isinstance(pitch, PitchResult):
++            # Use provided pitch (normalized z-scores)
++            p_targets = pitch_result_to_tensor(pitch)
++            pitch_control = 1.0
++        elif isinstance(pitch, PitchOptions):
++            p_targets = None
++            pitch_control = pitch.pitch_control
++        else:
++            p_targets = None
++            pitch_control = 1.0
++        
++        # Process energy parameter
++        if isinstance(energy, EnergyResult):
++            # Use provided energy
++            e_targets = energy_result_to_tensor(energy)
++            energy_control = 1.0
++        elif isinstance(energy, EnergyOptions):
++            e_targets = None
++            energy_control = energy.energy_control
++        else:
++            e_targets = None
++            energy_control = 1.0
+         
+         # Get phoneme sequence
+         phoneme_sequence = get_phoneme_sequence(phonemize_result, preprocess_config)
+@@ -172,29 +174,38 @@ class InferenceService:
+             speaker_id, phoneme_sequence, preprocess_config
+         )
+         
+-        # Convert duration_result to tensor format for model
+-        from .adapters import duration_result_to_tensor
+-        d_targets = duration_result_to_tensor(duration_result)
+-        
+-        # Calculate mel_lens and max_mel_len from d_targets
+-        # This is needed because when d_targets is provided, the model needs to know the output length
+-        mel_lens = d_targets.sum(dim=1)  # Sum of durations for each batch item
+-        max_mel_len = mel_lens.max().item()
+-        
+-        # Run model forward pass with duration as target
+-        # When d_targets is provided, model will use it instead of predicting
++        # Prepare model forward pass arguments
++        model_args = {
++            "d_control": duration_control,
++            "p_control": pitch_control,
++            "e_control": energy_control,
++        }
++        
++        # If we have d_targets, we need to calculate mel_lens and max_mel_len
++        if d_targets is not None:
++            mel_lens = d_targets.sum(dim=1)
++            max_mel_len = mel_lens.max().item()
++            model_args["mel_lens"] = mel_lens
++            model_args["max_mel_len"] = max_mel_len
++            model_args["d_targets"] = d_targets
++        
++        # Add pitch targets if provided
++        if p_targets is not None:
++            model_args["p_targets"] = p_targets
++        
++        # Add energy targets if provided
++        if e_targets is not None:
++            model_args["e_targets"] = e_targets
++        
++        # Run model forward pass
+         with torch.no_grad():
+             output = model(
+                 speakers, texts, src_lens, max_src_len,
+-                mel_lens=mel_lens,
+-                max_mel_len=max_mel_len,
+-                d_targets=d_targets,
+-                p_control=pitch_control,
+-                e_control=energy_control
++                **model_args
+             )
+         
+         # Create PredictResult from output
+-        return create_predict_result(output, phonemize_result, duration_result, preprocess_config)
++        return create_predict_result(output, phonemize_result, preprocess_config)
+     
+     def infer_audio(
+         self,
+diff --git a/refactoring/instructions/1.md b/refactoring/instructions/s1/1.md
+similarity index 100%
+rename from refactoring/instructions/1.md
+rename to refactoring/instructions/s1/1.md
+diff --git a/refactoring/instructions/2.md b/refactoring/instructions/s1/2.md
+similarity index 100%
+rename from refactoring/instructions/2.md
+rename to refactoring/instructions/s1/2.md
+diff --git a/refactoring/instructions/3.md b/refactoring/instructions/s1/3.md
+similarity index 100%
+rename from refactoring/instructions/3.md
+rename to refactoring/instructions/s1/3.md
+diff --git a/refactoring/instructions/4.md b/refactoring/instructions/s1/4.md
+similarity index 100%
+rename from refactoring/instructions/4.md
+rename to refactoring/instructions/s1/4.md
+diff --git a/refactoring/instructions/s2/5.md b/refactoring/instructions/s2/5.md
+new file mode 100644
+index 0000000..1d1b2a9
+--- /dev/null
++++ b/refactoring/instructions/s2/5.md
+@@ -0,0 +1,90 @@
++## In `api-server.py`
++
++turn `POST /predict_duration` into `POST /predict_prosody_features`.
++
++### Request Format Change
++
++Old requests look like:
++
++```json
++{
++  "language": {
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++  },
++  "speed": 1,
++  "segments": [
++    { "text": "测", "phonemes": ["c", "e4"] },
++    { "text": "试", "phonemes": ["sh", "iii4"] }
++  ]
++}
++```
++
++New requests should look like:
++
++```jsonc
++{
++  "language": {
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
++  },
++  "segments": [
++    { "text": "测", "phonemes": ["c", "e4"] },
++    { "text": "试", "phonemes": ["sh", "iii4"] }
++  ],
++  "duration": { "speed": 1 }, // or: `"duration": { "durationTicks2d": […], "ticksPerSecond": … }`
++  "pitch": { "pitch2d": [[42], [42, 42]] }, // or `"pitch": null`
++  "energy": { "energy2d": [[42], [42, 42]] } // or `"energy": null`
++}
++```
++
++### Response Format Change
++
++Old responses look like:
++
++```json
++[
++  "ok",
++  {
++    "durationTicks2d": [[42], [42, 42]],
++    "ticksPerSecond": 42
++  }
++]
++```
++
++New responses should look like:
++
++```json
++[
++  "ok",
++  {
++    "durationTicks2d": [[42], [42, 42]],
++    "ticksPerSecond": 42,
++    "pitch2d": [[42], [42, 42]],
++    "energy2d": [[42], [42, 42]]
++  }
++]
++```
++
++## In `refactoring/inference_service.py`
++
++`predict_duration` and `predict_pitch_and_energy` should be merged into a single
++method `predict_prosody_features`.
++
++signature:
++
++```py3
++def predict_prosody_features(
++    self,
++    lang: LanguageSpecifier,
++    phonemize_result: PhonemizeResult,
++    duration: DurationResult | DurationOptions | None, # DurationOptions: { speed: float }
++    pitch: PitchResult | PitchOptions | None, # PitchOptions: { pitch_control: float }
++    energy: EnergyResult | EnergyOptions | None, # EnergyOptions: { energy_control: float }
++    **opts: Any,
++) -> PredictResult: ...
++```
++
++## In `refactoring/adapters.py`
++
++merge `extract_duration_from_output` into `create_predict_result`.
+diff --git a/refactoring/instructions/s2/6.md b/refactoring/instructions/s2/6.md
+new file mode 100644
+index 0000000..849a616
+--- /dev/null
++++ b/refactoring/instructions/s2/6.md
+@@ -0,0 +1,5 @@
++## In `api-server.py`
++
++`POST /generate_prosody` should also adopt the same request format as
++`POST /predict_prosody_features`. (maybe some shared logic can be extracted and
++reused.)
+diff --git a/refactoring/instructions/s2/7.md b/refactoring/instructions/s2/7.md
+new file mode 100644
+index 0000000..28a81e6
+--- /dev/null
++++ b/refactoring/instructions/s2/7.md
+@@ -0,0 +1,11 @@
++## In `api-server.py`
++
++1. change `pitch2d` in `/predict_prosody_features` and `/generate_prosody`'s
++   request to `pitchHz2d`.
++2. change `pitch2d` in `/predict_prosody_features`'s request to `pitchHz2d`.
++
++`pitch2d` is z-score normalized, while others (with `frequency` in the names)
++are not. You should do the conversion in the endpoints accordingly.
++
++see `plot_mel` in `utils/tools.py` for reference on how to normalize and
++denormalize.
+diff --git a/refactoring/instructions/s2/8.md b/refactoring/instructions/s2/8.md
+new file mode 100644
+index 0000000..b1a2003
+--- /dev/null
++++ b/refactoring/instructions/s2/8.md
+@@ -0,0 +1,17 @@
++## in `api-server.py`
++
++1. don't accept `*_control` & `speed` anymore in
++   `POST /predict_prosody_features` and `POST /generate_prosody`'s requests.
++2. in `POST /predict_prosody_features`'s requests, move `duration`, `pitch` and
++   `energy` into an optional&nullable object called
++   `featurePredictionOverrides`.
++3. in `POST /generate_prosody`'s requests, move `duration`, `pitch` and `energy`
++   into an optional&nullable object called `featurePredictions`.
++4. in `POST /predict_prosody_features`'s responses, group predictions into
++   different objects with their feature names. (e.g.
++   `{ "duration": { "ticksPerSecond": …, "durationTicks2d": … }, "pitch": { "pitchHz2d": … }, … }`.)
++5. if a feature is overriden in `POST /predict_prosody_features`, instead of
++   responding with the prediction of that feature, respond with
++   `{ "isOverriden": true }`. (for example, if `duration` is provided, the
++   response should look like
++   `{ "duration": { "isOverriden": true }, "pitch": { ... }, "energy": { ... } }`.)
+diff --git a/refactoring/instructions/s2/9.md b/refactoring/instructions/s2/9.md
+new file mode 100644
+index 0000000..6b7a6d1
+--- /dev/null
++++ b/refactoring/instructions/s2/9.md
+@@ -0,0 +1,10 @@
++## in `api-server.py`
++
++1. make all features in `featurePredictions` and the object itself mandatory in
++   `POST /generate_prosody`'s requests .
++2. add back speed, pitch-control and energy-control to
++   `POST /predict_prosody_features`'s requests. This time, they should be
++   grouped in an object like `{ "speed": …, "pitch": …, "energy": … }`, and the
++   object should be called `controls` and located in the root of the request.
++   `featurePredictionOverrides.duration` and `controls.speed` should be mutually
++   exclusive, same for `pitch` and `energy`.
+diff --git a/refactoring/types.py b/refactoring/types.py
+index 7b678d1..c1b4264 100644
+--- a/refactoring/types.py
++++ b/refactoring/types.py
+@@ -25,6 +25,12 @@ class PhonemizeResult:
+     segments: list[PhonemeSegment]
+ 
+ 
++@dataclass
++class DurationOptions:
++    """Options for duration control."""
++    speed: float
++
++
+ @dataclass
+ class DurationResult:
+     """Result of duration prediction."""
+@@ -33,11 +39,37 @@ class DurationResult:
+     duration_unit_in_ticks: int  # Number of ticks per duration unit
+ 
+ 
++@dataclass
++class PitchOptions:
++    """Options for pitch control."""
++    pitch_control: float
++
++
++@dataclass
++class PitchResult:
++    """Result of pitch prediction."""
++    pitch_2d: list[list[float]]  # Maps to segments->phonemes or frames
++
++
++@dataclass
++class EnergyOptions:
++    """Options for energy control."""
++    energy_control: float
++
++
++@dataclass
++class EnergyResult:
++    """Result of energy prediction."""
++    energy_2d: list[list[float]]  # Maps to segments->phonemes or frames
++
++
+ @dataclass
+ class PredictResult:
+-    """Result of pitch and energy prediction."""
++    """Result of prosody feature prediction."""
+     phonemize_result: PhonemizeResult
+     duration_result: DurationResult
++    pitch_2d: list[list[float]]  # Maps to segments->phonemes or frames
++    energy_2d: list[list[float]]  # Maps to segments->phonemes or frames
+     pitch_predictions: np.ndarray  # Phoneme-level or frame-level pitch predictions
+     energy_predictions: np.ndarray  # Phoneme-level or frame-level energy predictions
+     mel_predictions: np.ndarray  # Predicted mel spectrogram
+-- 
+2.50.1
+

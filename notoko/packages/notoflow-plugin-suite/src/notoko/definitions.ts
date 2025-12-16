@@ -1,4 +1,4 @@
-import z from "zod/v4";
+import z, { object } from "zod/v4";
 
 //================ common ================//
 
@@ -25,14 +25,41 @@ export const PhonemeSegment = z.object({
 });
 export type PhonemeSegment = z.infer<typeof PhonemeSegment>;
 
-export const Duration2d = z.array(z.array(z.number().int().nonnegative()));
-export type Duration2d = z.infer<typeof Duration2d>;
+export const DurationTicks2d = z.array(z.array(z.number().int().nonnegative()));
+export type DurationTicks2d = z.infer<typeof DurationTicks2d>;
+
+export const PitchHz2d = z.array(z.array(z.number().nonnegative()));
+export type PitchHz2d = z.infer<typeof PitchHz2d>;
+
+/**
+ * TODO: figure out the unit of energy.
+ */
+export const EnergyZScore2d = z.array(z.array(z.number()));
+export type EnergyZScore2d = z.infer<typeof EnergyZScore2d>;
 
 export const DurationPrediction = z.object({
-  durationTicks2d: Duration2d,
+  durationTicks2d: DurationTicks2d,
   ticksPerSecond: z.number().int().positive(),
 });
 export type DurationPrediction = z.infer<typeof DurationPrediction>;
+
+export const PitchPrediction = z.object({ pitchHz2d: PitchHz2d });
+export type PitchPrediction = z.infer<typeof PitchPrediction>;
+
+export const EnergyPrediction = z.object({ energyZScore2d: EnergyZScore2d });
+export type EnergyPrediction = z.infer<typeof EnergyPrediction>;
+
+export const FeaturePredictionOverrideSupport = z
+  .enum(["required", "optional", "forbidden"]);
+export type FeaturePredictionOverrideSupport = z.//
+infer<typeof FeaturePredictionOverrideSupport>;
+
+export const FeatureOptions = z.object({
+  duration: DurationPrediction,
+  pitch: PitchPrediction,
+  energy: EnergyPrediction,
+});
+export type FeatureOptions = z.infer<typeof FeatureOptions>;
 
 export const ProsodyData = z.discriminatedUnion("$schema", [
   z.object({
@@ -89,48 +116,61 @@ export const PhonemizerValidatePhonemeOutput = z
 export type PhonemizerValidatePhonemeOutput = z.//
 infer<typeof PhonemizerValidatePhonemeOutput>;
 
-//================ Duration Predictor ================//
+//================ Prosody Features Predictor ================//
 
-export const DurationPredictorSpecification = z.object({
+export const ProsodyFeaturesPredictorSpecification = z.object({
   supportedLanguageAndPhonemeLexiconCombinations: z.array(z
     .object({ language: Language, phonemeLexicon: PhonemeLexicon })),
 });
-export type DurationPredictorSpecification = z.//
-infer<typeof DurationPredictorSpecification>;
+export type ProsodyFeaturesPredictorSpecification = z.//
+infer<typeof ProsodyFeaturesPredictorSpecification>;
 
-export const DurationPredictorPredictDurationSpecifier = z
+export const ProsodyFeaturesPredictorPredictSpecifier = z
   .object({ language: Language, phonemeLexicon: PhonemeLexicon });
-export type DurationPredictorPredictDurationSpecifier = z.//
-infer<typeof DurationPredictorPredictDurationSpecifier>;
-export const DurationPredictorPredictDurationInput = z.object({
+export type ProsodyFeaturesPredictorPredictSpecifier = z.//
+infer<typeof ProsodyFeaturesPredictorPredictSpecifier>;
+export const ProsodyFeaturesPredictorPredictInput = z.object({
   phonemeSegments: z.array(PhonemeSegment),
-  speed: z.number().optional(),
+  featurePredictionOverrides: FeatureOptions.partial().optional(),
+  controls: z.object({
+    speed: z.number().positive().optional(),
+    pitch: z.number().positive().optional(),
+    energy: z.number().positive().optional(),
+  }).optional(),
+}).refine((x) => {
+  if (x.featurePredictionOverrides?.duration && x.controls?.speed) return false;
+  if (x.featurePredictionOverrides?.pitch && x.controls?.pitch) return false;
+  if (x.featurePredictionOverrides?.energy && x.controls?.energy) return false;
+  return true;
 });
-export type DurationPredictorPredictDurationInput = z.//
-infer<typeof DurationPredictorPredictDurationInput>;
-export const DurationPredictorPredictDurationOutput = DurationPrediction;
-export type DurationPredictorPredictDurationOutput = DurationPrediction;
+export type ProsodyFeaturesPredictorPredictInput = z.//
+infer<typeof ProsodyFeaturesPredictorPredictInput>;
+export const ProsodyFeaturesPredictorPredictOutput = z.object({
+  duration: z.union([
+    DurationPrediction,
+    z.object({ isOverridden: z.literal(true) }),
+  ]),
+  pitch: z.union([
+    PitchPrediction,
+    z.object({ isOverridden: z.literal(true) }),
+  ]),
+  energy: z.union([
+    EnergyPrediction,
+    z.object({ isOverridden: z.literal(true) }),
+  ]),
+});
+export type ProsodyFeaturesPredictorPredictOutput = z.infer<
+  typeof ProsodyFeaturesPredictorPredictOutput
+>;
 
 //================ Prosody Generator ================//
-
-export const DurationInputSupport = z
-  .enum(["required", "optional", "forbidden"]);
-export type DurationInputSupport = z.infer<typeof DurationInputSupport>;
 
 export const ProsodyGeneratorSpecification = z.object({
   supportedLanguageAndPhonemeLexiconCombinations: z.array(z
     .object({ language: Language, phonemeLexicon: PhonemeLexicon })),
-  durationInputSupport: DurationInputSupport,
 });
 export type ProsodyGeneratorSpecification = z.//
 infer<typeof ProsodyGeneratorSpecification>;
-
-export const ProsodyGeneratorGenerateProsodyInputDuration = z.union([
-  z.tuple([z.literal("simple"), z.object({ speed: z.number().optional() })]),
-  z.tuple([z.literal("custom"), DurationPrediction]),
-]);
-export type ProsodyGeneratorGenerateProsodyInputDuration = z.//
-infer<typeof ProsodyGeneratorGenerateProsodyInputDuration>;
 
 export const ProsodyGeneratorGenerateProsodySpecifier = z
   .object({ language: Language, phonemeLexicon: PhonemeLexicon });
@@ -138,7 +178,7 @@ export type ProsodyGeneratorGenerateProsodySpecifier = z.//
 infer<typeof ProsodyGeneratorGenerateProsodySpecifier>;
 export const ProsodyGeneratorGenerateProsodyInput = z.object({
   phonemeSegments: z.array(PhonemeSegment),
-  duration: ProsodyGeneratorGenerateProsodyInputDuration,
+  featurePredictions: FeatureOptions,
 });
 export type ProsodyGeneratorGenerateProsodyInput = z.//
 infer<typeof ProsodyGeneratorGenerateProsodyInput>;

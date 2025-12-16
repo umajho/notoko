@@ -1,4 +1,5 @@
 import * as _ from "es-toolkit";
+import type { infer as ZInfer, ZodType } from "zod";
 
 import { Fragment, type FunctionComponent } from "preact";
 import {
@@ -15,11 +16,15 @@ import {
 } from "../../definitions";
 
 export const NumberInputThatCanBeFallbackToTextInput: FunctionComponent<{
+  initialValue: number;
   step?: number;
   min?: number;
-  $value: Signal<number>;
+  onInput: (v: number) => void;
 }> = (props) => {
+  const $value = useSignal(props.initialValue);
   const $isFallbacking = useSignal(false);
+
+  useSignalEffect(() => props.onInput($value.value));
 
   return (
     <div class="flex gap-2">
@@ -30,18 +35,16 @@ export const NumberInputThatCanBeFallbackToTextInput: FunctionComponent<{
             class="input input-md"
             step={props.step}
             min={props.min}
-            value={props.$value.value}
-            onInput={(ev) =>
-              props.$value.value = Number(ev.currentTarget.value)}
+            value={$value.value}
+            onInput={(ev) => $value.value = Number(ev.currentTarget.value)}
           />
         )
         : (
           <input
             type="text"
             class="input input-md"
-            value={props.$value.value}
-            onInput={(ev) =>
-              props.$value.value = Number(ev.currentTarget.value)}
+            value={$value.value}
+            onInput={(ev) => $value.value = Number(ev.currentTarget.value)}
           />
         )}
 
@@ -61,16 +64,20 @@ export const NumberInputThatCanBeFallbackToTextInput: FunctionComponent<{
 /**
  * When the JSON text is not valid, `set$validData` is called with `null`.
  */
-export const JsonTextarea: FunctionComponent<{
+export function JsonTextarea<T extends ZodType>(props: {
   placeholder: string;
-  $validData: Signal<any>;
-}> = (props) => {
-  const $jsonText = useSignal("");
+  initialTextValue: string;
+  onInputDataOrNullIfInvalid: (data: ZInfer<T> | null) => void;
+  dataSchemata: T;
+}) {
+  const $jsonText = useSignal(props.initialTextValue);
   useSignalEffect(() => {
     try {
-      props.$validData.value = JSON.parse($jsonText.value);
+      props.onInputDataOrNullIfInvalid(
+        props.dataSchemata.parse(JSON.parse($jsonText.value)),
+      );
     } catch {
-      props.$validData.value = null;
+      props.onInputDataOrNullIfInvalid(null);
     }
   });
 
@@ -83,7 +90,7 @@ export const JsonTextarea: FunctionComponent<{
     >
     </textarea>
   );
-};
+}
 
 export const LanguageAndPhonemeLexiconSelector: FunctionComponent<{
   $selectedLanguage: Signal<Language | null>;
