@@ -10,6 +10,17 @@ My motive is to enable Software-Talk characters — who do not natively speak
 Mandarin — to speak Mandarin in videos I (will) produce, using methods that are
 both legal and ethical (See the FAQ section below for details.).
 
+## Status
+
+The projects in this repository are all in very early stages of development.
+They are incomplete, lack even the most basic functionalities, and certainly
+contain many bugs. Compatibility is not guaranteed. And you should also expect
+this situation to persist for a long time, since once I make these projects work
+well enough for my own use case (the motive I mentioned above), I will likely
+redirect my attention to other projects for an undetermined period of time.
+
+TL;DR: Use at your own risk.
+
 ## Projects
 
 | Name     | Path                     | Description                                                                                           |
