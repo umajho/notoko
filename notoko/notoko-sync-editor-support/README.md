@@ -1,0 +1,1 @@
+# `notoko-sync` Editor Support

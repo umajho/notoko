@@ -1,0 +1,412 @@
+From 96660b113461e3864a75f4ce4898396bbbeb6fe3 Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Wed, 19 Nov 2025 20:00:39 +0800
+Subject: [PATCH 4/7] let copilot fix various things
+
+4 commits squashed.
+---
+ api-server.py                         | 66 +++++++++++++++++++--------
+ refactoring/IMPLEMENTATION_SUMMARY.md |  2 +-
+ refactoring/README.md                 |  2 +-
+ refactoring/adapters.py               | 20 ++++++++
+ refactoring/example.py                |  4 +-
+ refactoring/inference_service.py      | 24 +++++++---
+ refactoring/instructions/1.md         |  2 +-
+ refactoring/instructions/2.md         |  5 +-
+ refactoring/instructions/3.md         | 61 +++++++++++++++++++++++++
+ synthesize.py                         |  2 +-
+ 10 files changed, 155 insertions(+), 33 deletions(-)
+ create mode 100644 refactoring/instructions/3.md
+
+diff --git a/api-server.py b/api-server.py
+index 75f9b69..84d8ebb 100644
+--- a/api-server.py
++++ b/api-server.py
+@@ -24,7 +24,7 @@ def validate_language_and_segmentation(lang_iso639: str, seg_format: str) -> tup
+     # Define valid combinations
+     valid_combinations = {
+         "eng": ["librispeech"],
+-        "cmn": ["fastspeech2-pinyin-r"]
++        "cmn": ["fastspeech2-pinyin-r?tones"]
+     }
+     
+     if lang_iso639 not in valid_combinations:
+@@ -36,20 +36,20 @@ def validate_language_and_segmentation(lang_iso639: str, seg_format: str) -> tup
+     return True, None
+ 
+ 
+-def validate_durations_shape(segments: list[dict[str, Any]], durations_2d: list[list[int]]) -> tuple[bool, str | None]:
++def validate_duration_ticks_shape(segments: list[dict[str, Any]], duration_ticks_2d: list[list[int]]) -> tuple[bool, str | None]:
+     """
+-    Validate that durations_2d shape matches segments structure.
++    Validate that durationTicks2d shape matches segments structure.
+     
+     Returns:
+         (is_valid, error_message)
+     """
+-    if len(segments) != len(durations_2d):
+-        return False, f"durations_2d length ({len(durations_2d)}) does not match segments length ({len(segments)})"
++    if len(segments) != len(duration_ticks_2d):
++        return False, f"durationTicks2d length ({len(duration_ticks_2d)}) does not match segments length ({len(segments)})"
+     
+-    for i, (segment, durations) in enumerate(zip(segments, durations_2d)):
++    for i, (segment, durations) in enumerate(zip(segments, duration_ticks_2d)):
+         phonemes = segment.get("phonemes", [])
+         if len(phonemes) != len(durations):
+-            return False, f"durations_2d[{i}] length ({len(durations)}) does not match segments[{i}].phonemes length ({len(phonemes)})"
++            return False, f"durationTicks2d[{i}] length ({len(durations)}) does not match segments[{i}].phonemes length ({len(phonemes)})"
+     
+     return True, None
+ 
+@@ -94,14 +94,24 @@ def predict_duration():
+         # Create LanguageSpecifier
+         lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
+         
++        # Parse optional speed parameter and calculate duration_control
++        speed = data.get("speed")
++        duration_control = 1.0 / speed if speed is not None else 1.0
++        
+         # Call inference service
+-        duration_result = inference_service.predict_duration(lang_spec, phonemize_result)
++        duration_result = inference_service.predict_duration(
++            lang_spec, phonemize_result, duration_control=duration_control
++        )
++        
++        # Format response - multiply durations by duration_unit_in_ticks
++        duration_ticks_2d = [
++            [duration * duration_result.duration_unit_in_ticks for duration in segment_durations]
++            for segment_durations in duration_result.durations_2d
++        ]
+         
+-        # Format response
+         response = {
+             "ticksPerSecond": duration_result.ticks_per_second,
+-            "durations2d": duration_result.durations_2d,
+-            "durationUnitInTicks": duration_result.duration_unit_in_ticks
++            "durationTicks2d": duration_ticks_2d
+         }
+         
+         return jsonify(["ok", response]), 200
+@@ -150,30 +160,50 @@ def generate_prosody():
+         # Create LanguageSpecifier
+         lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
+         
++        # Parse optional speed parameter and calculate duration_control
++        speed = data.get("speed")
++        duration_control = 1.0 / speed if speed is not None else 1.0
++        
+         # Get or predict durations
+-        durations_2d = data.get("durations2d")
++        duration_ticks_2d = data.get("durationTicks2d")
++        ticks_per_second = data.get("ticksPerSecond")
+         
+-        if durations_2d is not None:
++        # Validate that both durationTicks2d and speed are not provided together
++        if duration_ticks_2d is not None and speed is not None:
++            return jsonify(["error", {"message": "cannot provide both durationTicks2d and speed parameters"}]), 400
++        
++        if duration_ticks_2d is not None:
++            # Validate that ticksPerSecond is provided
++            if ticks_per_second is None:
++                return jsonify(["error", {"message": "ticksPerSecond is required when durationTicks2d is provided"}]), 400
++            
+             # Validate durations shape
+-            is_valid, error_msg = validate_durations_shape(segments, durations_2d)
++            is_valid, error_msg = validate_duration_ticks_shape(segments, duration_ticks_2d)
+             if not is_valid:
+                 return jsonify(["error", {"message": error_msg}]), 400
+             
+-            # Get config for frames_per_second and hop_length
++            # Get config for hop_length
+             lang_code = lang_iso639
+             preprocess_config, _, _ = inference_service.configs[lang_code]
+-            frames_per_second = preprocess_config["preprocessing"]["audio"]["sampling_rate"]
+             hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
+             
++            # Convert durationTicks2d back to durations2d by dividing by hop_length
++            durations_2d = [
++                [duration_ticks // hop_length for duration_ticks in segment_durations]
++                for segment_durations in duration_ticks_2d
++            ]
++            
+             # Create DurationResult from provided durations
+             duration_result = DurationResult(
+-                ticks_per_second=frames_per_second,
++                ticks_per_second=ticks_per_second,
+                 durations_2d=durations_2d,
+                 duration_unit_in_ticks=hop_length
+             )
+         else:
+             # Predict durations using inference service
+-            duration_result = inference_service.predict_duration(lang_spec, phonemize_result)
++            duration_result = inference_service.predict_duration(
++                lang_spec, phonemize_result, duration_control=duration_control
++            )
+         
+         # Predict pitch and energy
+         predict_result = inference_service.predict_pitch_and_energy(
+diff --git a/refactoring/IMPLEMENTATION_SUMMARY.md b/refactoring/IMPLEMENTATION_SUMMARY.md
+index 86fd260..f3df048 100644
+--- a/refactoring/IMPLEMENTATION_SUMMARY.md
++++ b/refactoring/IMPLEMENTATION_SUMMARY.md
+@@ -161,7 +161,7 @@ inference_service = InferenceService(
+ )
+ 
+ # Use service
+-lang = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r")
++lang = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r?tones")
+ phonemize_result = inference_service.phonemize(lang, "你好")
+ duration_result = inference_service.predict_duration(lang, phonemize_result)
+ predict_result = inference_service.predict_pitch_and_energy(
+diff --git a/refactoring/README.md b/refactoring/README.md
+index 62c00cd..4c95bdc 100644
+--- a/refactoring/README.md
++++ b/refactoring/README.md
+@@ -120,7 +120,7 @@ inference_service = InferenceService(
+ # Specify language
+ lang = LanguageSpecifier(
+     iso639_3="cmn", 
+-    segmentation_format="fastspeech2-pinyin-r"
++    segmentation_format="fastspeech2-pinyin-r?tones"
+ )
+ 
+ # Run inference pipeline
+diff --git a/refactoring/adapters.py b/refactoring/adapters.py
+index 03b8f19..f25078f 100644
+--- a/refactoring/adapters.py
++++ b/refactoring/adapters.py
+@@ -89,6 +89,26 @@ def prepare_model_input(
+     return speakers, texts, src_lens, max_src_len
+ 
+ 
++def duration_result_to_tensor(duration_result: DurationResult) -> torch.Tensor:
++    """Convert DurationResult to tensor format expected by model.
++    
++    Args:
++        duration_result: DurationResult with durations_2d structure
++        
++    Returns:
++        Tensor of shape [1, total_phonemes] containing duration values
++    """
++    # Flatten the 2D duration structure into 1D array
++    durations_flat = []
++    for segment_durations in duration_result.durations_2d:
++        durations_flat.extend(segment_durations)
++    
++    # Convert to tensor [1, num_phonemes]
++    duration_tensor = torch.LongTensor([durations_flat]).to(device)
++    
++    return duration_tensor
++
++
+ def extract_duration_from_output(
+     output: tuple[Any, ...],
+     phonemize_result: PhonemizeResult,
+diff --git a/refactoring/example.py b/refactoring/example.py
+index a6285b1..bf4f221 100644
+--- a/refactoring/example.py
++++ b/refactoring/example.py
+@@ -88,7 +88,7 @@ def example_mandarin_synthesis():
+     # Specify language
+     lang = LanguageSpecifier(
+         iso639_3="cmn",
+-        segmentation_format="fastspeech2-pinyin-r"
++        segmentation_format="fastspeech2-pinyin-r?tones"
+     )
+     
+     # Input text
+@@ -156,7 +156,7 @@ def example_multi_language_service():
+     print(f"English phonemes: {phonemize_result_eng.segments[0].phonemes}")
+     
+     # Synthesize Mandarin
+-    lang_cmn = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r")
++    lang_cmn = LanguageSpecifier(iso639_3="cmn", segmentation_format="fastspeech2-pinyin-r?tones")
+     phonemize_result_cmn = inference_service.phonemize(lang_cmn, "你好")
+     print(f"Mandarin phonemes: {[seg.phonemes for seg in phonemize_result_cmn.segments]}")
+ 
+diff --git a/refactoring/inference_service.py b/refactoring/inference_service.py
+index 2c42a78..538db50 100644
+--- a/refactoring/inference_service.py
++++ b/refactoring/inference_service.py
+@@ -143,16 +143,15 @@ class InferenceService:
+         **opts: Any
+     ) -> PredictResult:
+         """
+-        Predict pitch and energy.
++        Predict pitch and energy using the given duration.
+         
+         Args:
+             lang: Language specifier
+             phonemize_result: Result from phonemize()
+-            duration_result: Result from predict_duration()
++            duration_result: Result from predict_duration() - will be used to guide predictions
+             **opts: Optional control parameters
+                 - pitch_control: float, control pitch (default 1.0)
+                 - energy_control: float, control energy (default 1.0)
+-                - duration_control: float, control speaking speed (default 1.0)
+                 
+         Returns:
+             PredictResult with all prediction data
+@@ -164,7 +163,6 @@ class InferenceService:
+         
+         pitch_control = opts.get("pitch_control", 1.0)
+         energy_control = opts.get("energy_control", 1.0)
+-        duration_control = opts.get("duration_control", 1.0)
+         
+         # Get phoneme sequence
+         phoneme_sequence = get_phoneme_sequence(phonemize_result, preprocess_config)
+@@ -174,13 +172,25 @@ class InferenceService:
+             speaker_id, phoneme_sequence, preprocess_config
+         )
+         
+-        # Run model forward pass with all controls
++        # Convert duration_result to tensor format for model
++        from .adapters import duration_result_to_tensor
++        d_targets = duration_result_to_tensor(duration_result)
++        
++        # Calculate mel_lens and max_mel_len from d_targets
++        # This is needed because when d_targets is provided, the model needs to know the output length
++        mel_lens = d_targets.sum(dim=1)  # Sum of durations for each batch item
++        max_mel_len = mel_lens.max().item()
++        
++        # Run model forward pass with duration as target
++        # When d_targets is provided, model will use it instead of predicting
+         with torch.no_grad():
+             output = model(
+                 speakers, texts, src_lens, max_src_len,
++                mel_lens=mel_lens,
++                max_mel_len=max_mel_len,
++                d_targets=d_targets,
+                 p_control=pitch_control,
+-                e_control=energy_control,
+-                d_control=duration_control
++                e_control=energy_control
+             )
+         
+         # Create PredictResult from output
+diff --git a/refactoring/instructions/1.md b/refactoring/instructions/1.md
+index 2e8febc..ee418d0 100644
+--- a/refactoring/instructions/1.md
++++ b/refactoring/instructions/1.md
+@@ -43,7 +43,7 @@ def phonemize(self, lang: LanguageSpecifier, text: str):
+   """
+   `lang` looks like (dataclasses):
+   - `{"iso639-3": "eng", "segmentation_format": "librispeech"}`
+-  - `{"iso639-3": "cmn", "segmentation_format": "fastspeech2-pinyin-r"}`
++  - `{"iso639-3": "cmn", "segmentation_format": "fastspeech2-pinyin-r?tones"}`
+ 
+   returns something like (dataclasses):
+   ```
+diff --git a/refactoring/instructions/2.md b/refactoring/instructions/2.md
+index 3340a56..cd42d40 100644
+--- a/refactoring/instructions/2.md
++++ b/refactoring/instructions/2.md
+@@ -12,7 +12,7 @@ example request:
+ {
+   "language": {
+     "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r"
++    "segmentation_format": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+@@ -29,6 +29,7 @@ example OK response (200):
+ ```json
+ ["ok", {
+   "ticksPerSecond": 22050,
++  "durationUnitInTicks": 256,
+   "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]]
+ }]
+ ```
+@@ -49,7 +50,7 @@ example request:
+ {
+   "language": {
+     "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r"
++    "segmentation_format": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+diff --git a/refactoring/instructions/3.md b/refactoring/instructions/3.md
+new file mode 100644
+index 0000000..8843280
+--- /dev/null
++++ b/refactoring/instructions/3.md
+@@ -0,0 +1,61 @@
++# 1
++
++Change the response of `POST /predict_duration` from like:
++
++```json
++["ok", {
++  "ticksPerSecond": 22050,
++  "durationUnitInTicks": 256,
++  "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]]
++}]
++```
++
++to like:
++
++```json
++["ok", {
++  "ticksPerSecond": 22050,
++  "durationTicks2d": [[123 * 256, 456 * 256], [789 * 256, 234 * 256], [567 * 256], [891 * 256, 345 * 256], [678 * 256, 912 * 256]]
++}]
++```
++
++# 2
++
++Change the request of `POST /generate_prosody` from like:
++
++```json
++{
++  "language": {
++    "iso-639": "cmn",
++    "segmentation_format": "fastspeech2-pinyin-r?tones"
++  },
++  "segments": [
++    { "text": "你", "phonemes": ["n", "i3"] },
++    { "text": "好", "phonemes": ["h", "ao3"] },
++    { "text": "，", "phonemes": ["sp"] },
++    { "text": "世", "phonemes": ["sh", "iii4"] },
++    { "text": "界", "phonemes": ["j", "ie4"] }
++  ],
++  "durations2d": [[123, 456], [789, 234], [567], [891, 345], [678, 912]]
++}
++```
++
++to like:
++
++```json
++{
++  "language": {
++    "iso-639": "cmn",
++    "segmentation_format": "fastspeech2-pinyin-r?tones"
++  },
++  "segments": [
++    { "text": "你", "phonemes": ["n", "i3"] },
++    { "text": "好", "phonemes": ["h", "ao3"] },
++    { "text": "，", "phonemes": ["sp"] },
++    { "text": "世", "phonemes": ["sh", "iii4"] },
++    { "text": "界", "phonemes": ["j", "ie4"] }
++  ],
++  "ticksPerSecond": 22050,
++  "durationTicks2d": [[123 * 256, 456 * 256], [789 * 256, 234 * 256], [567 * 256], [891 * 256, 345 * 256], [678 * 256, 912 * 256]]
++}
++```
+diff --git a/synthesize.py b/synthesize.py
+index 0a2ef9d..b54302d 100644
+--- a/synthesize.py
++++ b/synthesize.py
+@@ -85,7 +85,7 @@ if __name__ == "__main__":
+         segmentation_format = "librispeech"
+         language_name = "english"
+     else:  # cmn
+-        segmentation_format = "fastspeech2-pinyin-r"
++        segmentation_format = "fastspeech2-pinyin-r?tones"
+         language_name = "mandarin"
+     
+     # Create InferenceService
+-- 
+2.50.1
+

@@ -1,0 +1,58 @@
+{
+  // TODO: `"$schema"`.
+
+  "id": "notoko",
+  "type": "plugin:singleton",
+  "version": "0.0.1",
+  "shownName": "Notoko Core",
+
+  "staticConfigurationSchema": [
+    "json_schema",
+    { "type": "object", "properties": {} }
+  ],
+  "defaultStaticConfiguration": {},
+
+  "initialStatus": "ready",
+
+  "functionalityDictionary": {
+    "phonemizer": {
+      "shownName": "Phonemizer",
+      "methods": {
+        "phonemize": {
+          "demonstratorUi": [
+            "custom_element_registerer",
+            "DemonstratorPhonemizerPhonemize.js"
+          ]
+        },
+        "validatePhoneme": {
+          "demonstratorUi": [
+            "custom_element_registerer",
+            "DemonstratorPhonemizerValidatePhoneme.js"
+          ]
+        }
+      }
+    },
+    "prosody_features_predictor": {
+      "shownName": "Prosody Features Predictor",
+      "methods": {
+        "predict": {
+          "demonstratorUi": [
+            "custom_element_registerer",
+            "DemonstratorProsodyFeaturesPredictorPredict.js"
+          ]
+        }
+      }
+    },
+    "prosody_generator": {
+      "shownName": "Prosody Generator",
+      "methods": {
+        "generateProsody": {
+          "demonstratorUi": [
+            "custom_element_registerer",
+            "DemonstratorProsodyGeneratorGenerateProsody.js"
+          ]
+        }
+      }
+    }
+  }
+}

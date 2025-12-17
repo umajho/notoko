@@ -1,0 +1,30 @@
+// @refresh reload
+import { createHandler, StartServer } from "@solidjs/start/server";
+
+import { initializeOnce } from "~/server/init";
+
+await initializeOnce();
+
+export default createHandler(() => {
+  return (
+    <StartServer
+      document={({ assets, children, scripts }) => (
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1"
+            />
+            <link rel="icon" href="/favicon.ico" />
+            {assets}
+          </head>
+          <body class="bg-base-300">
+            <div id="app" class="flex flex-col h-dvh">{children}</div>
+            {scripts}
+          </body>
+        </html>
+      )}
+    />
+  );
+});

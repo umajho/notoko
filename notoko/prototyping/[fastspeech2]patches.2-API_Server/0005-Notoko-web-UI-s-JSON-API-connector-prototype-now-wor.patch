@@ -1,0 +1,396 @@
+From 5ef51f450a2d150e55082716bd6a9b74c942a7b2 Mon Sep 17 00:00:00 2001
+From: umajho <umajho@proton.me>
+Date: Mon, 1 Dec 2025 03:48:17 +0800
+Subject: [PATCH 5/7] Notoko web UI's JSON API connector prototype now works
+ with api-server.py
+
+start the API server: `uv run api-server.py`.
+
+Most changes in this commit are also made by copilot.
+---
+ api-server.py                 | 158 +++++++++++++++++++++++++++++-----
+ refactoring/instructions/1.md |   4 +-
+ refactoring/instructions/2.md |   8 +-
+ refactoring/instructions/3.md |   8 +-
+ refactoring/instructions/4.md |  43 +++++++++
+ 5 files changed, 189 insertions(+), 32 deletions(-)
+ create mode 100644 refactoring/instructions/4.md
+
+diff --git a/api-server.py b/api-server.py
+index 84d8ebb..f50b811 100644
+--- a/api-server.py
++++ b/api-server.py
+@@ -3,6 +3,8 @@
+ from flask import Flask, request, jsonify
+ from typing import Any
+ import numpy as np
++import json
++import os
+ 
+ from refactoring import InferenceService, LanguageSpecifier, PhonemizeResult, PhonemeSegment, DurationResult
+ from utils.tools import generate_prosody_json
+@@ -12,9 +14,20 @@ app = Flask(__name__)
+ # Initialize InferenceService with default configurations
+ # This will be initialized when the server starts
+ inference_service: InferenceService | None = None
++# Configuration map with metadata
++service_config_map: dict[str, dict[str, Any]] = {}
+ 
+ 
+-def validate_language_and_segmentation(lang_iso639: str, seg_format: str) -> tuple[bool, str | None]:
++def get_segmentation_formats(iso639_3: str) -> list[str]:
++    """Get supported segmentation formats for a given language code."""
++    formats_map = {
++        "eng": ["librispeech"],
++        "cmn": ["fastspeech2-pinyin-r?tones"]
++    }
++    return formats_map.get(iso639_3, [])
++
++
++def validate_language_and_segmentation(lang_iso639_3: str, seg_format: str) -> tuple[bool, str | None]:
+     """
+     Validate language and segmentation format compatibility.
+     
+@@ -27,11 +40,11 @@ def validate_language_and_segmentation(lang_iso639: str, seg_format: str) -> tup
+         "cmn": ["fastspeech2-pinyin-r?tones"]
+     }
+     
+-    if lang_iso639 not in valid_combinations:
+-        return False, f"unsupported language `{lang_iso639}`"
++    if lang_iso639_3 not in valid_combinations:
++        return False, f"unsupported language `{lang_iso639_3}`"
+     
+-    if seg_format not in valid_combinations[lang_iso639]:
+-        return False, f"unsupported segmentation format `{seg_format}` for language `{lang_iso639}`"
++    if seg_format not in valid_combinations[lang_iso639_3]:
++        return False, f"unsupported segmentation format `{seg_format}` for language `{lang_iso639_3}`"
+     
+     return True, None
+ 
+@@ -66,14 +79,14 @@ def predict_duration():
+         
+         # Parse language
+         language = data["language"]
+-        lang_iso639 = language.get("iso-639")
+-        seg_format = language.get("segmentation_format")
++        lang_iso639_3 = language.get("iso639-3")
++        seg_format = language.get("segmentationFormat")
+         
+-        if not lang_iso639 or not seg_format:
+-            return jsonify(["error", {"message": "language must have iso-639 and segmentation_format"}]), 400
++        if not lang_iso639_3 or not seg_format:
++            return jsonify(["error", {"message": "language must have iso639-3 and segmentation_format"}]), 400
+         
+         # Validate language and segmentation format
+-        is_valid, error_msg = validate_language_and_segmentation(lang_iso639, seg_format)
++        is_valid, error_msg = validate_language_and_segmentation(lang_iso639_3, seg_format)
+         if not is_valid:
+             return jsonify(["error", {"message": error_msg}]), 400
+         
+@@ -92,7 +105,7 @@ def predict_duration():
+         phonemize_result = PhonemizeResult(segments=phoneme_segments)
+         
+         # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=seg_format)
+         
+         # Parse optional speed parameter and calculate duration_control
+         speed = data.get("speed")
+@@ -132,14 +145,14 @@ def generate_prosody():
+         
+         # Parse language
+         language = data["language"]
+-        lang_iso639 = language.get("iso-639")
+-        seg_format = language.get("segmentation_format")
++        lang_iso639_3 = language.get("iso639-3")
++        seg_format = language.get("segmentationFormat")
+         
+-        if not lang_iso639 or not seg_format:
+-            return jsonify(["error", {"message": "language must have iso-639 and segmentation_format"}]), 400
++        if not lang_iso639_3 or not seg_format:
++            return jsonify(["error", {"message": "language must have iso639-3 and segmentation_format"}]), 400
+         
+         # Validate language and segmentation format
+-        is_valid, error_msg = validate_language_and_segmentation(lang_iso639, seg_format)
++        is_valid, error_msg = validate_language_and_segmentation(lang_iso639_3, seg_format)
+         if not is_valid:
+             return jsonify(["error", {"message": error_msg}]), 400
+         
+@@ -158,7 +171,7 @@ def generate_prosody():
+         phonemize_result = PhonemizeResult(segments=phoneme_segments)
+         
+         # Create LanguageSpecifier
+-        lang_spec = LanguageSpecifier(iso639_3=lang_iso639, segmentation_format=seg_format)
++        lang_spec = LanguageSpecifier(iso639_3=lang_iso639_3, segmentation_format=seg_format)
+         
+         # Parse optional speed parameter and calculate duration_control
+         speed = data.get("speed")
+@@ -183,7 +196,7 @@ def generate_prosody():
+                 return jsonify(["error", {"message": error_msg}]), 400
+             
+             # Get config for hop_length
+-            lang_code = lang_iso639
++            lang_code = lang_iso639_3
+             preprocess_config, _, _ = inference_service.configs[lang_code]
+             hop_length = preprocess_config["preprocessing"]["stft"]["hop_length"]
+             
+@@ -237,7 +250,7 @@ def generate_prosody():
+         raw_text = "".join(seg.text for seg in phonemize_result.segments)
+         
+         # Determine language name
+-        language_name = "mandarin" if lang_iso639 == "cmn" else "english"
++        language_name = "mandarin" if lang_iso639_3 == "cmn" else "english"
+         
+         # Generate prosody JSON
+         prosody_data = generate_prosody_json(
+@@ -260,10 +273,94 @@ def generate_prosody():
+         return jsonify(["error", {"message": f"internal error: {str(e)}"}]), 500
+ 
+ 
++@app.route("/info", methods=["GET"])
++def get_info():
++    """Get information about available duration predictors and prosody generators."""
++    try:
++        info = {
++            "shownName": "FastSpeech2 Patched Prototype",
++            "durationPredictors": {},
++            "prosodyGenerators": {}
++        }
++        
++        # Build info from service_config_map
++        for lang_code, config in service_config_map.items():
++            key = f"{config['iso639_3']}.{config['dataset_name'].lower()}"
++            iso639_3 = config["iso639_3"]
++            segmentation_formats = get_segmentation_formats(iso639_3)
++            
++            # Build configuration schema based on whether model has multiple speakers
++            has_multiple_speakers = "max_speaker_id" in config
++            if has_multiple_speakers:
++                config_schema = ["json_schema", {
++                    "$schema": "https://json-schema.org/draft-07/schema#",
++                    "type": "object",
++                    "required": ["speakerId"],
++                    "properties": {
++                        "speakerId": {
++                            "type": "integer",
++                            "minimum": 0,
++                            "maximum": config["max_speaker_id"]
++                        }
++                    }
++                }]
++                default_config = {"speakerId": config.get("speaker_id", 0)}
++            else:
++                config_schema = ["json_schema", {
++                    "$schema": "https://json-schema.org/draft-07/schema#",
++                    "type": "object"
++                }]
++                default_config = {}
++            
++            supported_input_languages = [{
++                "iso639-3": iso639_3,
++                "segmentationFormatsRanked": segmentation_formats
++            }]
++
++            # Build duration predictor info
++            duration_predictor = {
++                "shownName": config["shown_name"],
++                "supportedInputLanguages": supported_input_languages,
++                "configurationSchema": config_schema,
++                "defaultConfiguration": default_config
++            }
++            info["durationPredictors"][key] = duration_predictor
++            
++            # Build prosody generator info
++            prosody_generator = {
++                "shownName": config["shown_name"],
++                "supportedInputLanguages": supported_input_languages,
++                "durationInput": "optional",
++                "configurationSchema": config_schema,
++                "defaultConfiguration": default_config
++            }
++            info["prosodyGenerators"][key] = prosody_generator
++        
++        return jsonify(info), 200
++        
++    except Exception as e:
++        return jsonify(["error", {"message": f"internal error: {str(e)}"}]), 500
++
++
+ def initialize_service(config_map: dict[str, dict[str, Any]]):
+     """Initialize the inference service with configuration."""
+-    global inference_service
+-    inference_service = InferenceService(configuration_map=config_map)
++    global inference_service, service_config_map
++    
++    # Store the full config map with metadata
++    service_config_map = config_map
++    
++    # Extract only the InferenceService-required fields for initialization
++    inference_config = {}
++    for lang_code, config in config_map.items():
++        inference_config[lang_code] = {
++            "speaker_id": config.get("speaker_id", 0),
++            "restore_step": config["restore_step"],
++            "p": config["p"],
++            "m": config["m"],
++            "t": config["t"],
++        }
++    
++    inference_service = InferenceService(configuration_map=inference_config)
+ 
+ 
+ if __name__ == "__main__":
+@@ -276,16 +373,33 @@ if __name__ == "__main__":
+     
+     args = parser.parse_args()
+     
+-    # Build configuration map
++    # Load speaker information for AISHELL3
++    speakers_file = "preprocessed_data/AISHELL3/speakers.json"
++    max_speaker_id_aishell3 = 0
++    if os.path.exists(speakers_file):
++        with open(speakers_file, 'r') as f:
++            speakers = json.load(f)
++            max_speaker_id_aishell3 = max(speakers.values()) if speakers else 0
++    
++    # Build configuration map with metadata
+     config_map = {
+       # "eng": {
++      #   "iso639_3": "eng",
++      #   "dataset_name": "LJSpeech",
++      #   "shown_name": "English (LJSpeech)",
++      #   # Single-speaker model - no speaker_id or max_speaker_id
+       #   "restore_step": 900000,
+       #   "p": "config/LJSpeech/preprocess.yaml",
+       #   "m": "config/LJSpeech/model.yaml",
+       #   "t": "config/LJSpeech/train.yaml",
+       # },
+       "cmn": {
++        "iso639_3": "cmn",
++        "dataset_name": "AISHELL3",
++        "shown_name": "汉语普通话 (AISHELL-3)",
++        # Multi-speaker model
+         "speaker_id": 1,
++        "max_speaker_id": max_speaker_id_aishell3,
+         "restore_step": 600000,
+         "p": "config/AISHELL3/preprocess.yaml",
+         "m": "config/AISHELL3/model.yaml",
+diff --git a/refactoring/instructions/1.md b/refactoring/instructions/1.md
+index ee418d0..78091c9 100644
+--- a/refactoring/instructions/1.md
++++ b/refactoring/instructions/1.md
+@@ -42,8 +42,8 @@ For example, you can construct `InferenceService` based on the cli arguments in
+ def phonemize(self, lang: LanguageSpecifier, text: str):
+   """
+   `lang` looks like (dataclasses):
+-  - `{"iso639-3": "eng", "segmentation_format": "librispeech"}`
+-  - `{"iso639-3": "cmn", "segmentation_format": "fastspeech2-pinyin-r?tones"}`
++  - `{"iso639_3": "eng", "segmentation_format": "librispeech"}`
++  - `{"iso639_3": "cmn", "segmentation_format": "fastspeech2-pinyin-r?tones"}`
+ 
+   returns something like (dataclasses):
+   ```
+diff --git a/refactoring/instructions/2.md b/refactoring/instructions/2.md
+index cd42d40..4180f02 100644
+--- a/refactoring/instructions/2.md
++++ b/refactoring/instructions/2.md
+@@ -11,8 +11,8 @@ example request:
+ ```json
+ {
+   "language": {
+-    "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r?tones"
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+@@ -49,8 +49,8 @@ example request:
+ ```json
+ {
+   "language": {
+-    "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r?tones"
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+diff --git a/refactoring/instructions/3.md b/refactoring/instructions/3.md
+index 8843280..b987160 100644
+--- a/refactoring/instructions/3.md
++++ b/refactoring/instructions/3.md
+@@ -26,8 +26,8 @@ Change the request of `POST /generate_prosody` from like:
+ ```json
+ {
+   "language": {
+-    "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r?tones"
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+@@ -45,8 +45,8 @@ to like:
+ ```json
+ {
+   "language": {
+-    "iso-639": "cmn",
+-    "segmentation_format": "fastspeech2-pinyin-r?tones"
++    "iso639-3": "cmn",
++    "segmentationFormat": "fastspeech2-pinyin-r?tones"
+   },
+   "segments": [
+     { "text": "你", "phonemes": ["n", "i3"] },
+diff --git a/refactoring/instructions/4.md b/refactoring/instructions/4.md
+new file mode 100644
+index 0000000..4549796
+--- /dev/null
++++ b/refactoring/instructions/4.md
+@@ -0,0 +1,43 @@
++Implement the endpoint `GET /info` in `api-server.py` that reponses json
++resembling to follwing:
++
++```jsonc
++{
++  "shownName": "FastSpeech2 Patched Prototype",
++  "durationPredictors": {
++    // "eng.librispeech": {/* … */},
++    "cmn.aishell3": {
++      "shownName": "汉语普通话 (AISHELL-3)",
++      "supportedInputLanguages": [
++        {
++          "iso639-3": "cmn",
++          "segmentationFormatsRanked": ["fastspeech2-pinyin-r?tones"]
++        }
++      ],
++      "configurationSchema": ["json_schema", {
++        "$schema": "https://json-schema.org/draft-07/schema#",
++        "type": "object",
++        "required": ["speakerId"],
++        "properties": {
++          // got from `preprocessed_data/AISHELL3/speakers.json`.
++          "speakerId": { "type": "integer", "minimum": 0, "maximum": 217 }
++        }
++      }],
++      "defaultConfiguration": { " speakerId": 1 }
++    }
++  },
++  "prosodyGenerators": {
++    // "eng.librispeech": {/* … */},
++    "cmn.aishell3": {
++      "shownName": "汉语普通话 (AISHELL-3)",
++      "supportedInputLanguages": [
++        {
++          "iso639-3": "cmn",
++          "segmentationFormatsRanked": ["fastspeech2-pinyin-r?tones"]
++        }
++      ],
++      "durationInput": "optional" // "required", "optional", "forbidden".
++    }
++  }
++}
++```
+-- 
+2.50.1
+
